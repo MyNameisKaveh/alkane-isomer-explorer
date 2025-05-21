@@ -1,0 +1,56 @@
+name: Deploy to Hugging Face Spaces
+
+on:
+  push:
+    branches:
+      - main # یا هر شاخه‌ای که می‌خواهید با پوش کردن به آن، دیپلوی انجام شود
+
+jobs:
+  deploy-to-space:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Push to Hugging Face Space
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }} # استفاده از سکرتی که تعریف کردید
+        run: |
+          # نصب git-lfs برای مدیریت فایل‌های بزرگ (اختیاری اما خوب است باشد)
+          sudo apt-get update && sudo apt-get install git-lfs -y
+          git lfs install
+
+          # کلون کردن Space از هاگینگ فیس
+          # نام کاربری/نام Space خود را جایگزین کنید
+          # مثال: "your-username/your-space-name"
+          git clone https://huggingface:HF_TOKEN@huggingface.co/spaces/YOUR_HF_USERNAME/YOUR_SPACE_NAME space_repo
+          
+          cd space_repo
+
+          # حذف فایل‌های قدیمی (به جز .git) برای اطمینان از تمیز بودن
+          # این مرحله اختیاری است، اما می‌تواند از مشکلات جلوگیری کند
+          # اگر فایل‌های خاصی دارید که نمی‌خواهید حذف شوند (مثلا دیتاست‌های بزرگ در LFS)، این بخش را با دقت تنظیم کنید
+          find . -path ./.git -prune -o -type f -delete
+          find . -path ./.git -prune -o -type d -empty -delete
+          
+          # کپی کردن فایل‌های جدید از ریپازیتوری شما به پوشه کلون شده Space
+          # مطمئن شوید مسیرها درست هستند. `../` به ریشه ریپازیتوری گیت‌هاب اشاره دارد.
+          cp ../app.py .
+          cp ../requirements.txt .
+          # اگر فایل‌های دیگری دارید (مثلا README.md یا پوشه static)، آنها را هم کپی کنید
+          # cp ../README.md . 
+          # cp -r ../static . # اگر پوشه static دارید
+
+          # اضافه کردن، کامیت و پوش کردن تغییرات به Space
+          git add .
+          # بررسی اینکه آیا تغییری برای کامیت وجود دارد
+          if ! git diff-index --quiet HEAD; then
+            git config --global user.email "action@github.com"
+            git config --global user.name "GitHub Action"
+            git commit -m "Deploy new version from GitHub"
+            git push https://huggingface:${HF_TOKEN}@huggingface.co/spaces/YOUR_HF_USERNAME/YOUR_SPACE_NAME
+          else
+            echo "No changes to commit to Hugging Face Space."
+          fi
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }} # این خط تکراری است اما برای اطمینان
