@@ -1,7 +1,7 @@
 import pubchempy as pcp
 from rdkit import Chem
 from rdkit.Chem.Draw import MolToImage
-from rdkit.Chem import AllChem  # FIX: Import AllChem explicitly for 3D conformer generation
+from rdkit.Chem import AllChem  # Import AllChem explicitly for 3D conformer generation
 import gradio as gr
 import traceback
 import py3Dmol
@@ -47,11 +47,7 @@ def render_3d_molecule(smiles_string):
         # Convert RDKit molecule to SDF string (standard format for 3D data)
         sdf_string = Chem.MolToMolBlock(mol)
         
-        # DEBUGGING: Check if SDF string is empty or problematic
-        if not sdf_string or len(sdf_string.strip()) < 100: # A basic check for content
-            print(f"DEBUG: Generated SDF string looks short/empty for SMILES {smiles_string}:\n{sdf_string}")
-            return f"Error: Failed to generate valid 3D data for {smiles_string}.", gr.update(value="", visible=False)
-
+        # Removed the problematic debug line: if not sdf_string or len(sdf_string.strip()) < 100:
 
         # Create py3Dmol viewer
         viewer = py3Dmol.view(width=400, height=400) # Define viewer size
@@ -69,6 +65,7 @@ def render_3d_molecule(smiles_string):
         return "3D structure of the molecule:", gr.update(value=html_content, visible=True)
     except Exception as e:
         print(f"Error rendering 3D molecule for SMILES {smiles_string}: {e}")
+        # This error message now correctly displays the exception caught.
         return f"Error in 3D display: {e}", gr.update(value="", visible=False)
 
 def on_3d_dropdown_select(selected_name, all_isomers_data):
@@ -86,8 +83,8 @@ def on_3d_dropdown_select(selected_name, all_isomers_data):
             break
     
     if selected_smiles:
-        status_text, html_content_update = render_3d_molecule(selected_smiles) # <<< This calls render_3d_molecule
-        return status_text, html_content_update # <<< This returns the updates
+        status_text, html_content_update = render_3d_molecule(selected_smiles)
+        return status_text, html_content_update
     else:
         return "Error: Selected isomer not found.", gr.update(value="", visible=False)
 
@@ -97,7 +94,6 @@ def find_and_display_isomers(molecule_name_input):
     Also prepares data for the 3D viewer.
     """
     # Initialize outputs for gr.update(). We need to return values for all interface outputs.
-    # The state component will store (name, smiles) tuples.
     empty_gallery = gr.update(value=[], visible=False)
     initial_status_text = ""
     initial_status_text_visible = False
