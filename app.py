@@ -41,16 +41,10 @@ def render_3d_molecule(smiles_string):
         AllChem.MMFFOptimizeMolecule(mol)
         sdf_string = Chem.MolToMolBlock(mol)
         
-        # Create py3Dmol viewer
-        viewer = py3Dmol.view(width=400, height=400)
-        viewer.addModel(sdf_string, 'sdf')
-        viewer.setStyle({'stick':{}})
-        viewer.zoomTo()
+        # Debugging: Print SDF string to verify
+        print(f"DEBUG: SDF String for {smiles_string}:\n{sdf_string}")
         
-        # Generate the JavaScript content for the viewer
-        js_content = viewer.js()
-        
-        # Use a raw string literal or escape the SDF string to handle braces
+        # Escape SDF string for JavaScript
         sdf_escaped = sdf_string.replace("'", "\\'").replace("\n", "\\n")
         full_html = f"""
         <!DOCTYPE html>
@@ -60,20 +54,26 @@ def render_3d_molecule(smiles_string):
             <script src="https://3Dmol.org/build/3Dmol-min.js"></script>
             <style>
                 body {{ margin: 0; padding: 0; }}
-                #viewer {{ width: 400px; height: 400px; }}
+                #viewer {{ width: 400px; height: 400px; border: 1px solid #ccc; }}
             </style>
         </head>
         <body>
             <div id="viewer"></div>
             <script>
-                // Initialize the 3Dmol viewer
-                var viewer = $3Dmol.createViewer(document.getElementById("viewer"), {{ backgroundColor: "white" }});
-                viewer.addModel('{sdf_escaped}', "sdf");
-                viewer.setStyle({{ stick: {{}} }});
-                viewer.zoomTo();
-                viewer.render();
-                // Append any additional JS content if needed
-                {js_content}
+                // Check if 3Dmol is loaded
+                if (typeof $3Dmol === 'undefined') {{
+                    document.getElementById('viewer').innerText = 'Error: 3Dmol.js failed to load. Check your internet connection or browser settings.';
+                }} else {{
+                    var viewer = $3Dmol.createViewer(document.getElementById('viewer'), {{ backgroundColor: "white" }});
+                    try {{
+                        viewer.addModel('{sdf_escaped}', 'sdf');
+                        viewer.setStyle({{ stick: {{}} }});
+                        viewer.zoomTo();
+                        viewer.render();
+                    }} catch (e) {{
+                        document.getElementById('viewer').innerText = 'Error rendering 3D model: ' + e.message;
+                    }}
+                }}
             </script>
         </body>
         </html>
