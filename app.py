@@ -3,7 +3,7 @@ from rdkit import Chem
 from rdkit.Chem.Draw import MolToImage
 import gradio as gr
 import traceback
-import py3Dmol # New import
+import py3Dmol
 
 # --- Existing functions (slightly modified returns) ---
 def draw_molecule(smiles_string):
@@ -89,7 +89,8 @@ def find_and_display_isomers(molecule_name_input):
     empty_gallery = gr.update(value=[], visible=False)
     initial_status_text = ""
     initial_status_text_visible = False
-    empty_isomer_data_state = gr.update(value=[], visible=False) # The actual state component
+    # The state component itself doesn't need gr.update for visibility, as it's non-visual
+    empty_isomer_data_state = [] # <--- Changed from gr.update(value=[], visible=False)
     empty_3d_dropdown_choices = gr.update(choices=[], value=None, visible=False) # Dropdown for 3D
     empty_3d_status_text = "" # Text for 3D tab
     empty_3d_html_viewer = gr.update(value="", visible=False) # 3D viewer itself
@@ -148,7 +149,7 @@ def find_and_display_isomers(molecule_name_input):
                             for atom in mol_obj.GetAtoms():
                                 atom_symbols_main.add(atom.GetSymbol())
                                 if atom.GetIsotope() != 0:
-                                    print(f"    Main candidate CID {cid} has non-standard isotope: {atom.GetSymbol()}{atom.GetIsotope()}")
+                                    print(f"    Main candidate CID {cid} has non-standard isotope: {atom.GetSymbol()}{atom.GetIdx()+1}")
                                     is_standard_alkane_candidate = False
                                     break
                             if not atom_symbols_main.issubset({'C', 'H'}):
@@ -314,9 +315,10 @@ def find_and_display_isomers(molecule_name_input):
         dropdown_choices = [name for name, smiles in all_isomers_for_3d_data]
         
         # Return all outputs, including the state and 3D dropdown updates
+        # The state component itself is just the list, not wrapped in gr.update
         return gr.update(value=isomer_outputs_final_2d, visible=True), \
                gr.update(value=status_message, visible=True), \
-               gr.update(value=all_isomers_for_3d_data, visible=True), \
+               all_isomers_for_3d_data, \
                gr.update(choices=dropdown_choices, value=None, visible=True, interactive=True), \
                "لطفا یک ایزومر از لیست بالا انتخاب کنید تا ساختار سه‌بعدی آن را ببینید.", \
                gr.update(value="", visible=False)
@@ -354,7 +356,8 @@ with gr.Blocks(theme=gr.themes.Soft()) as demo:
         submit_btn = gr.Button("جستجو", scale=1)
 
     # Hidden state component to store isomer data for 3D viewer
-    isomer_data_state = gr.State(value=[], visible=False) 
+    # REMOVED 'visible=False' as gr.State does not accept it.
+    isomer_data_state = gr.State(value=[]) 
 
     with gr.Tabs() as tabs:
         with gr.TabItem("ایزومرهای دو بعدی", id="tab_2d"):
