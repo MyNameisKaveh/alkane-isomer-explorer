@@ -1,0 +1,4 @@
+pubchempy
+rdkit-pypi
+gradio
+Pillow
