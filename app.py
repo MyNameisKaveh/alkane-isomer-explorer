@@ -9,8 +9,6 @@ def draw_molecule(smiles_string):
     try:
         mol = Chem.MolFromSmiles(smiles_string)
         if mol:
-            # برای نمایش بهتر اتم‌های هیدروژن در آلکان‌های کوچک (اختیاری)
-            # Chem.AddHs(mol) 
             img = MolToImage(mol, size=(300, 300))
             return img
         else:
@@ -28,7 +26,7 @@ def find_and_display_isomers(molecule_name_input):
     if not molecule_name_input or not molecule_name_input.strip():
         return [], "لطفا نام یک مولکول را وارد کنید."
 
-    molecule_name = molecule_name_input.strip().lower() # تبدیل به حروف کوچک و حذف فضاهای اضافی
+    molecule_name = molecule_name_input.strip().lower()
     print(f"Processing request for: '{molecule_name}'")
     
     isomer_outputs = []
@@ -36,9 +34,9 @@ def find_and_display_isomers(molecule_name_input):
 
     try:
         # 1. جستجوی مولکول اصلی برای یافتن فرمول مولکولی
-        print(f"Searching for exact compound: '{molecule_name}' in PubChem...")
-        # استفاده از searchtype و بررسی چندین نتیجه برای یافتن فرمول معتبر
-        compounds = pcp.get_compounds(molecule_name, 'name', searchtype='superstructure', listkey_count=5) 
+        print(f"Searching for compound: '{molecule_name}' in PubChem (using default name search)...")
+        # *** تغییر کلیدی: حذف searchtype از اینجا ***
+        compounds = pcp.get_compounds(molecule_name, 'name', listkey_count=5) 
         
         main_compound_obj = None
         molecular_formula = None
@@ -51,18 +49,13 @@ def find_and_display_isomers(molecule_name_input):
         print(f"Found {len(compounds)} potential matches for '{molecule_name}'. Checking them...")
         for i, c in enumerate(compounds):
             cid = c.cid
-            # سعی در گرفتن نام رایج یا اولین مترادف
-            common_name = "N/A"
-            if c.synonyms:
-                common_name = c.synonyms[0]
-            
+            common_name = c.synonyms[0] if c.synonyms else "N/A"
             formula_attr = hasattr(c, 'molecular_formula')
             actual_formula = c.molecular_formula if formula_attr else None
             
             print(f"  Checking match {i+1}: CID {cid}, Name: '{common_name}', HasFormulaAttr: {formula_attr}, Formula: '{actual_formula}'")
 
-            if actual_formula: # اگر فرمول مولکولی وجود داشت
-                # اختیاری: بررسی اینکه آیا این یک هیدروکربن ساده است
+            if actual_formula:
                 is_simple_hydrocarbon = False
                 if c.canonical_smiles:
                     try:
@@ -81,40 +74,37 @@ def find_and_display_isomers(molecule_name_input):
                 else:
                     print(f"    CID {cid} has no SMILES string for element check.")
 
+                current_compound_name_matches_input = molecule_name in [syn.lower() for syn in c.synonyms]
 
-                # اگر نام ورودی دقیقا یکی از مترادف‌ها باشد و فرمول داشته باشد، اولویت دارد
-                if molecule_name in [syn.lower() for syn in c.synonyms]:
-                    if is_simple_hydrocarbon or not c.canonical_smiles: # اگر هیدروکربن ساده است یا نمی‌توانیم بررسی کنیم
-                        main_compound_obj = c
-                        molecular_formula = actual_formula
-                        print(f"  Selected main compound (exact name match & hydrocarbon): CID {main_compound_obj.cid}, Name: '{common_name}', Formula: {molecular_formula}")
-                        break 
-                
-                # اگر هنوز main_compound_obj پیدا نشده و این یک هیدروکربن ساده است
-                if not main_compound_obj and (is_simple_hydrocarbon or not c.canonical_smiles):
+                if current_compound_name_matches_input and (is_simple_hydrocarbon or not c.canonical_smiles):
                     main_compound_obj = c
                     molecular_formula = actual_formula
-                    print(f"  Tentatively selected main compound (hydrocarbon): CID {main_compound_obj.cid}, Name: '{common_name}', Formula: {molecular_formula}")
-                    # ادامه می‌دهیم تا اگر مورد بهتری با تطابق نام پیدا شد، آن را انتخاب کنیم
-
-        # اگر پس از حلقه، هنوز main_compound_obj بر اساس تطابق نام انتخاب نشده بود، اولین هیدروکربن یافت شده را استفاده کن
-        if not molecular_formula and main_compound_obj: # این حالت یعنی در بالا انتخاب موقت شده بود
-             molecular_formula = main_compound_obj.molecular_formula
-             print(f"  Confirmed selection of main compound: CID {main_compound_obj.cid}, Formula: {molecular_formula}")
+                    print(f"  Selected main compound (exact name match & hydrocarbon): CID {main_compound_obj.cid}, Name: '{common_name}', Formula: {molecular_formula}")
+                    break 
+                
+                if not main_compound_obj and (is_simple_hydrocarbon or not c.canonical_smiles):
+                    main_compound_obj = c # انتخاب موقت
+                    # molecular_formula هنوز ست نمی‌شود تا اولویت با تطابق نام باشد
+                    print(f"  Tentatively selected main compound (hydrocarbon): CID {main_compound_obj.cid}, Name: '{common_name}', Formula: {actual_formula}")
+        
+        # اگر پس از حلقه، main_compound_obj انتخاب شده بود (چه موقت چه قطعی)، فرمول آن را بردار
+        if main_compound_obj and not molecular_formula: # یعنی انتخاب موقت بوده و تطابق نام دقیق‌تر پیدا نشده
+            molecular_formula = main_compound_obj.molecular_formula 
+            print(f"  Confirmed selection of (first found hydrocarbon) main compound: CID {main_compound_obj.cid}, Formula: {molecular_formula}")
+        elif main_compound_obj and molecular_formula: # یعنی با تطابق نام انتخاب شده بود
+            print(f"  Selection based on name match and hydrocarbon confirmed: CID {main_compound_obj.cid}, Formula: {molecular_formula}")
 
 
         if not main_compound_obj or not molecular_formula:
             status_message = f"فرمول مولکولی معتبری برای '{molecule_name}' در نتایج اولیه PubChem یافت نشد. لطفا نام دقیق‌تری وارد کنید یا مطمئن شوید که یک آلکان است."
             print(status_message)
-            if compounds: # نمایش اطلاعات بیشتر اگر نتایجی بود اما مناسب نبودند
+            if compounds:
                  print(f"  PubChem results for '{molecule_name}' that were checked:")
                  for i, comp_item in enumerate(compounds):
                      print(f"    {i+1}. CID: {comp_item.cid}, Synonyms: {comp_item.synonyms[:2] if comp_item.synonyms else 'N/A'}, Formula: {hasattr(comp_item, 'molecular_formula') and comp_item.molecular_formula}")
             return [], status_message
         
-        # 2. جستجوی ترکیبات با همان فرمول مولکولی (ایزومرها)
         print(f"Searching for isomers with formula: {molecular_formula}...")
-        # افزایش listkey_count برای اطمینان از گرفتن همه ایزومرهای آلکان‌های رایج
         isomers_found_raw = pcp.get_compounds(molecular_formula, 'formula', listkey_count=50) 
 
         if not isomers_found_raw:
@@ -132,7 +122,6 @@ def find_and_display_isomers(molecule_name_input):
                 print(f"  Skipping duplicate CID: {isomer_entry.cid}")
                 continue 
             
-            # اطمینان از اینکه ایزومر هم یک هیدروکربن ساده است (برای آلکان‌ها)
             if isomer_entry.canonical_smiles:
                 try:
                     mol_iso = Chem.MolFromSmiles(isomer_entry.canonical_smiles)
@@ -141,31 +130,29 @@ def find_and_display_isomers(molecule_name_input):
                         if not elements_iso.issubset({'C', 'H'}):
                             print(f"  Skipping non-hydrocarbon isomer: CID {isomer_entry.cid}, Name: {isomer_entry.iupac_name or isomer_entry.synonyms[0] if isomer_entry.synonyms else ''}, Elements: {elements_iso}")
                             continue
-                    else: # SMILES نامعتبر برای ایزومر
+                    else:
                         print(f"  Skipping isomer with invalid SMILES: CID {isomer_entry.cid}")
                         continue
                 except Exception as rdkit_iso_ex:
                     print(f"  RDKit error for isomer SMILES CID {isomer_entry.cid}: {rdkit_iso_ex}")
                     continue
-            else: # ایزومر بدون SMILES
+            else:
                 print(f"  Skipping isomer without SMILES: CID {isomer_entry.cid}")
                 continue
-
 
             smiles = isomer_entry.canonical_smiles
             iupac_name = isomer_entry.iupac_name
             
             if not iupac_name and isomer_entry.synonyms:
-                # انتخاب بهترین مترادف
-                chosen_synonym = isomer_entry.synonyms[0] # پیش‌فرض
+                chosen_synonym = isomer_entry.synonyms[0]
                 simple_alkane_names = [s for s in isomer_entry.synonyms if s.lower().endswith("ane") and s.replace('-', '').isalpha()]
                 if simple_alkane_names:
-                    chosen_synonym = min(simple_alkane_names, key=len) # کوتاه‌ترین نام آلکان مانند
-                iupac_name = chosen_synonym.capitalize() # حرف اول بزرگ
+                    chosen_synonym = min(simple_alkane_names, key=len)
+                iupac_name = chosen_synonym.capitalize()
             elif not iupac_name:
                 iupac_name = f"Unknown Isomer (CID: {isomer_entry.cid})"
 
-            if smiles: # این شرط باید همیشه درست باشد چون در بالا فیلتر کردیم
+            if smiles:
                 mol_image = draw_molecule(smiles)
                 if mol_image:
                     isomer_outputs.append((mol_image, f"{iupac_name}\nSMILES: {smiles}"))
@@ -179,20 +166,21 @@ def find_and_display_isomers(molecule_name_input):
         if not isomer_outputs:
             status_message = "ایزومرها پیدا شدند اما هیچکدام معتبر نبودند یا تصویری برای نمایش وجود ندارد."
             print(status_message)
-        elif not status_message: # اگر پیام خطای دیگری از قبل نداشتیم
+        elif not status_message:
              status_message = f"{len(isomer_outputs)} ایزومر برای '{molecule_name_input}' (فرمول: {molecular_formula}) پیدا و نمایش داده شد."
         
-        isomer_outputs.sort(key=lambda x: x[1]) # مرتب‌سازی بر اساس کپشن (نام و SMILES)
+        isomer_outputs.sort(key=lambda x: x[1])
         
         return isomer_outputs, status_message
 
     except pcp.PubChemHTTPError as e:
         error_msg = f"خطا در ارتباط با PubChem: {e}. ممکن است سرویس موقتا در دسترس نباشد یا درخواست شما نامعتبر باشد."
         print(error_msg)
+        print(f"FULL TRACEBACK for PubChemHTTPError: {traceback.format_exc()}")
         return [], error_msg
     except Exception as e:
         error_msg = f"یک خطای غیرمنتظره در سرور رخ داد: {e}"
-        print(f"FULL TRACEBACK: {traceback.format_exc()}") # نمایش کامل خطا برای عیب‌یابی
+        print(f"FULL TRACEBACK for general Exception: {traceback.format_exc()}")
         return [], error_msg
 
 # ساخت رابط کاربری Gradio
