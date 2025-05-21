@@ -24,7 +24,8 @@ def draw_molecule(smiles_string):
 
 def render_3d_molecule(smiles_string):
     """
-    Renders a 3D molecule viewer using py3Dmol for the given SMILES string.
+    Renders a 3D molecule viewer using py3Dmol for the given SMILES string,
+    generating standalone HTML content compatible with Gradio.
     """
     if not smiles_string:
         return "Please select a molecule to display its 3D structure.", gr.update(value="", visible=False)
@@ -40,15 +41,28 @@ def render_3d_molecule(smiles_string):
         AllChem.MMFFOptimizeMolecule(mol)
         sdf_string = Chem.MolToMolBlock(mol)
         
+        # Create py3Dmol viewer
         viewer = py3Dmol.view(width=400, height=400)
         viewer.addModel(sdf_string, 'sdf')
         viewer.setStyle({'stick':{}})
         viewer.zoomTo()
         
-        html_content = viewer.show()
+        # Generate standalone HTML content
+        html_content = viewer.js()
+        # Wrap the JavaScript content in a basic HTML structure
+        full_html = f"""
+        <html>
+        <head>
+            <script src="https://3Dmol.org/build/3Dmol-min.js"></script>
+        </head>
+        <body>
+            {html_content}
+        </body>
+        </html>
+        """
         
-        print(f"DEBUG: Generated 3D HTML content length for '{smiles_string}': {len(html_content)}")
-        return "3D structure of the molecule:", gr.update(value=html_content, visible=True)
+        print(f"DEBUG: Generated 3D HTML content length for '{smiles_string}': {len(full_html)}")
+        return "3D structure of the molecule:", gr.update(value=full_html, visible=True)
     except Exception as e:
         print(f"Error rendering 3D molecule for SMILES {smiles_string}: {e}")
         return f"Error in 3D display: {e}", gr.update(value="", visible=False)
