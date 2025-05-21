@@ -49,7 +49,7 @@ def find_and_display_isomers(molecule_name_input):
             print(f"  Checking main compound candidate {i+1}: CID {cid}, Name: '{common_name}', HasFormulaAttr: {formula_attr}, Formula: '{actual_formula}'")
 
             if actual_formula:
-                is_standard_hydrocarbon = True # فرض اولیه
+                is_standard_hydrocarbon = True 
                 if c.canonical_smiles:
                     try:
                         mol_obj = Chem.MolFromSmiles(c.canonical_smiles)
@@ -61,44 +61,44 @@ def find_and_display_isomers(molecule_name_input):
                                     print(f"    Main candidate CID {cid} has non-standard isotope: {atom.GetSymbol()}{atom.GetIsotope()}")
                                     is_standard_hydrocarbon = False
                                     break
-                            if not is_standard_hydrocarbon: continue # برو سراغ ترکیب بعدی
+                            if not is_standard_hydrocarbon: continue 
 
                             if not atom_symbols_main.issubset({'C', 'H'}):
                                 print(f"    Main candidate CID {cid} is not CH only: {atom_symbols_main}")
                                 is_standard_hydrocarbon = False
                             
-                            if Chem.rdmolops.GetSSSR(mol_obj) > 0: # بررسی حلقوی بودن برای ترکیب اصلی
-                                print(f"    Main candidate CID {cid} is cyclic.")
-                                is_standard_hydrocarbon = False
+                            # --- فیلتر حلقوی حذف شد ---
+                            # if Chem.rdmolops.GetSSSR(mol_obj) > 0: 
+                            #     print(f"    Main candidate CID {cid} is cyclic.")
+                            #     is_standard_hydrocarbon = False
 
-                        else: # SMILES نامعتبر
+                        else: 
                              print(f"    Main candidate CID {cid} SMILES '{c.canonical_smiles}' could not be parsed by RDKit.")
                              is_standard_hydrocarbon = False
                     except Exception as rdkit_ex:
                         print(f"    RDKit error processing SMILES for main candidate CID {cid}: {rdkit_ex}")
-                        is_standard_hydrocarbon = False
-                else: # بدون SMILES
+                        is_standard_hydrocarbon = False # اگر خطایی در پردازش SMILES بود، آن را معتبر ندان
+                else: 
                     print(f"    Main candidate CID {cid} has no SMILES string for detailed check.")
-                    is_standard_hydrocarbon = False # نمی‌توانیم بررسی کنیم، پس رد می‌کنیم
+                    is_standard_hydrocarbon = False 
 
                 if not is_standard_hydrocarbon: continue
 
-                # اگر به اینجا رسید یعنی یک هیدروکربن استاندارد (غیر ایزوتوپی، غیر حلقوی، فقط C و H) است
                 current_compound_name_matches_input = molecule_name in [syn.lower() for syn in c.synonyms]
 
-                if current_compound_name_matches_input: # اگر نام هم مطابقت داشت، این بهترین گزینه است
+                if current_compound_name_matches_input: 
                     main_compound_obj = c
                     molecular_formula = actual_formula
                     print(f"  SELECTED main compound (name match & standard hydrocarbon): CID {main_compound_obj.cid}, Formula: {molecular_formula}")
                     break 
                 
-                if not main_compound_obj: # اگر هنوز اصلی انتخاب نشده، این را موقتا انتخاب کن
+                if not main_compound_obj: 
                     main_compound_obj = c 
-                    molecular_formula = actual_formula # موقتا فرمول را هم ست می‌کنیم
+                    molecular_formula = actual_formula 
                     print(f"  TENTATIVELY selected main compound (standard hydrocarbon): CID {main_compound_obj.cid}, Formula: {molecular_formula}")
         
-        if not main_compound_obj or not molecular_formula: # اگر پس از همه بررسی‌ها چیزی پیدا نشد
-            status_message = f"آلکان استاندارد و غیرحلقوی با نام '{molecule_name}' در PubChem یافت نشد."
+        if not main_compound_obj or not molecular_formula: 
+            status_message = f"آلکان استاندارد (غیر ایزوتوپی، فقط C و H) با نام '{molecule_name}' در PubChem یافت نشد." # "غیرحلقوی" حذف شد
             print(status_message)
             return [], status_message
         
@@ -148,10 +148,11 @@ def find_and_display_isomers(molecule_name_input):
                             is_standard_alkane_isomer = False
                             break 
                 
-                if is_standard_alkane_isomer:
-                    if Chem.rdmolops.GetSSSR(mol_iso) > 0:
-                        print(f"  FILTERED (Cyclic): CID {isomer_entry.cid}, Found rings, SMILES: {smiles}")
-                        is_standard_alkane_isomer = False
+                # --- فیلتر حلقوی حذف شد ---
+                # if is_standard_alkane_isomer:
+                #     if Chem.rdmolops.GetSSSR(mol_iso) > 0:
+                #         print(f"  FILTERED (Cyclic): CID {isomer_entry.cid}, Found rings, SMILES: {smiles}")
+                #         is_standard_alkane_isomer = False
                 
                 if is_standard_alkane_isomer:
                     print(f"  ACCEPTED: CID {isomer_entry.cid}, SMILES: {smiles}")
@@ -193,10 +194,10 @@ def find_and_display_isomers(molecule_name_input):
         print(f"Displayed {valid_isomers_count} isomers in the gallery.")
 
         if not isomer_outputs:
-            status_message = "ایزومر آلکان استاندارد و قابل رسمی پیدا نشد."
+            status_message = "ایزومر آلکان استاندارد و قابل رسمی پیدا نشد." # "غیرحلقوی" حذف شد
             if len(valid_structural_alkanes) > 0 :
                  status_message += " (برخی در مرحله رسم ناموفق بودند)."
-        else: # اگر isomer_outputs چیزی داشت، پیام موفقیت‌آمیز بده
+        else:
              status_message = f"{len(isomer_outputs)} ایزومر ساختاری آلکان برای '{molecule_name_input}' (فرمول: {molecular_formula}) پیدا و نمایش داده شد."
         
         isomer_outputs.sort(key=lambda x: x[1])
