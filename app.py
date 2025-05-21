@@ -50,7 +50,8 @@ def render_3d_molecule(smiles_string):
         # Generate the JavaScript content for the viewer
         js_content = viewer.js()
         
-        # Create a complete HTML structure with embedded 3Dmol initialization
+        # Use a raw string literal or escape the SDF string to handle braces
+        sdf_escaped = sdf_string.replace("'", "\\'").replace("\n", "\\n")
         full_html = f"""
         <!DOCTYPE html>
         <html>
@@ -67,8 +68,8 @@ def render_3d_molecule(smiles_string):
             <script>
                 // Initialize the 3Dmol viewer
                 var viewer = $3Dmol.createViewer(document.getElementById("viewer"), {{ backgroundColor: "white" }});
-                viewer.addModel(`{sdf_string}`, "sdf");
-                viewer.setStyle({{ stick: {{}} });
+                viewer.addModel('{sdf_escaped}', "sdf");
+                viewer.setStyle({{ stick: {{}} }});
                 viewer.zoomTo();
                 viewer.render();
                 // Append any additional JS content if needed
