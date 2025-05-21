@@ -3,7 +3,9 @@ from rdkit import Chem
 from rdkit.Chem.Draw import MolToImage
 import gradio as gr
 import traceback
+import py3Dmol # New import
 
+# --- Existing functions (slightly modified returns) ---
 def draw_molecule(smiles_string):
     """
     Renders a molecule image from a SMILES string.
@@ -20,19 +22,87 @@ def draw_molecule(smiles_string):
         print(f"Error drawing molecule for SMILES {smiles_string}: {e}")
         return None
 
+# --- New function for 3D rendering ---
+def render_3d_molecule(smiles_string):
+    """
+    Renders a 3D molecule viewer using py3Dmol for the given SMILES string.
+    """
+    if not smiles_string:
+        return "لطفا یک مولکول را انتخاب کنید تا ساختار سه‌بعدی آن نمایش داده شود.", gr.update(value="", visible=False)
+
+    try:
+        # Generate a basic 3D structure (e.g., using ETKDG for conformer generation)
+        mol = Chem.MolFromSmiles(smiles_string)
+        if not mol:
+            return f"خطا: SMILES '{smiles_string}' قابل پردازش نیست.", gr.update(value="", visible=False)
+        
+        # Add hydrogens for better 3D representation
+        mol = Chem.AddHs(mol)
+        
+        # Generate 3D conformer
+        Chem.AllChem.EmbedMolecule(mol, Chem.AllChem.ETKDGv2())
+        Chem.AllChem.MMFFOptimizeMolecule(mol) # Optional: optimize geometry
+
+        sdf_string = Chem.MolToMolBlock(mol)
+
+        # Create py3Dmol viewer
+        viewer = py3Dmol.view(width=400, height=400) # Smaller size for clarity
+        viewer.addModel(sdf_string, 'sdf')
+        viewer.setStyle({'stick':{}}) # Display as sticks
+        viewer.zoomTo()
+        
+        html_content = viewer.replicate_html()
+        return "ساختار سه‌بعدی مولکول:", gr.update(value=html_content, visible=True)
+    except Exception as e:
+        print(f"Error rendering 3D molecule for SMILES {smiles_string}: {e}")
+        return f"خطا در نمایش سه‌بعدی: {e}", gr.update(value="", visible=False)
+
+# --- Function to update 3D viewer based on dropdown selection ---
+def on_3d_dropdown_select(selected_name, all_isomers_data):
+    """
+    Called when an item is selected from the 3D dropdown.
+    Finds the SMILES for the selected name and renders the 3D view.
+    """
+    if not selected_name:
+        return "", gr.update(value="", visible=False) # Clear 3D viewer if no selection
+    
+    selected_smiles = None
+    for name, smiles in all_isomers_data:
+        if name == selected_name:
+            selected_smiles = smiles
+            break
+    
+    if selected_smiles:
+        status_text, html_content = render_3d_molecule(selected_smiles)
+        return status_text, html_content
+    else:
+        return "خطا: ایزومر انتخاب شده یافت نشد.", gr.update(value="", visible=False)
+
+# --- Modified main function to return isomer data for 3D ---
 def find_and_display_isomers(molecule_name_input):
     """
     Finds and displays structural alkane isomers for a given molecule name.
+    Now also returns data for 3D viewer.
     """
+    # Initialize outputs for gr.update(). We need to return values for all interface outputs.
+    # The state component will store (name, smiles) tuples.
+    empty_gallery = gr.update(value=[], visible=False)
+    initial_status_text = ""
+    initial_status_text_visible = False
+    empty_isomer_data_state = gr.update(value=[], visible=False) # The actual state component
+    empty_3d_dropdown_choices = gr.update(choices=[], value=None, visible=False) # Dropdown for 3D
+    empty_3d_status_text = "" # Text for 3D tab
+    empty_3d_html_viewer = gr.update(value="", visible=False) # 3D viewer itself
+
     if not molecule_name_input or not molecule_name_input.strip():
-        # Use gr.update to make them visible with an empty gallery and a message
-        return gr.update(value=[], visible=True), gr.update(value="لطفا نام یک مولکول را وارد کنید.", visible=True)
+        initial_status_text = "لطفا نام یک مولکول را وارد کنید."
+        initial_status_text_visible = True
+        return empty_gallery, gr.update(value=initial_status_text, visible=initial_status_text_visible), \
+               empty_isomer_data_state, empty_3d_dropdown_choices, empty_3d_status_text, empty_3d_html_viewer
 
     molecule_name = molecule_name_input.strip().lower()
     print(f"Processing request for: '{molecule_name}'")
     
-    status_message = ""
-
     try:
         print(f"Searching for compound: '{molecule_name}' in PubChem (up to 10 candidates)...")
         compounds = pcp.get_compounds(molecule_name, 'name', listkey_count=10) 
@@ -43,7 +113,8 @@ def find_and_display_isomers(molecule_name_input):
         if not compounds:
             status_message = f"مولکول '{molecule_name}' در PubChem یافت نشد. لطفا املای آن را بررسی کنید."
             print(status_message)
-            return gr.update(value=[], visible=True), gr.update(value=status_message, visible=True)
+            return empty_gallery, gr.update(value=status_message, visible=True), \
+                   empty_isomer_data_state, empty_3d_dropdown_choices, empty_3d_status_text, empty_3d_html_viewer
         
         print(f"Found {len(compounds)} potential matches for '{molecule_name}'. Checking them for standard alkane properties...")
         
@@ -119,7 +190,8 @@ def find_and_display_isomers(molecule_name_input):
         if not main_compound_obj or not molecular_formula: 
             status_message = f"آلکان ساختاری استاندارد با نام '{molecule_name}' در PubChem یافت نشد. (این ابزار تنها آلکان‌های شامل کربن و هیدروژن، بدون حلقه، بدون پیوند دوگانه/سه‌گانه و بدون ایزوتوپ را جستجو می‌کند.)"
             print(status_message)
-            return gr.update(value=[], visible=True), gr.update(value=status_message, visible=True)
+            return empty_gallery, gr.update(value=status_message, visible=True), \
+                   empty_isomer_data_state, empty_3d_dropdown_choices, empty_3d_status_text, empty_3d_html_viewer
         
         print(f"Proceeding with main compound: CID {main_compound_obj.cid}, Formula: {molecular_formula}")
         print(f"Searching for isomers with formula: {molecular_formula} (up to 200 candidates)...")
@@ -128,12 +200,14 @@ def find_and_display_isomers(molecule_name_input):
         if not isomers_found_raw:
             status_message = f"ایزومری برای فرمول {molecular_formula} یافت نشد."
             print(status_message)
-            return gr.update(value=[], visible=True), gr.update(value=status_message, visible=True)
+            return empty_gallery, gr.update(value=status_message, visible=True), \
+                   empty_isomer_data_state, empty_3d_dropdown_choices, empty_3d_status_text, empty_3d_html_viewer
 
         print(f"Found {len(isomers_found_raw)} potential isomer entries from PubChem. Filtering for true structural alkane isomers...")
         
         valid_structural_alkanes_entries = [] 
         unique_accepted_smiles = set() 
+        all_isomers_for_3d_data = [] # To store (name, smiles) for 3D dropdown
 
         for isomer_entry in isomers_found_raw:
             smiles = isomer_entry.canonical_smiles
@@ -190,9 +264,8 @@ def find_and_display_isomers(molecule_name_input):
         
         print(f"Found {len(valid_structural_alkanes_entries)} unique, valid structural alkane isomers after filtering.")
         
-        isomer_outputs_final = []
-        valid_isomers_count_final = 0
-
+        isomer_outputs_final_2d = [] # For 2D gallery
+        
         for final_isomer_entry in valid_structural_alkanes_entries:
             smiles_to_draw = final_isomer_entry.canonical_smiles
             
@@ -214,78 +287,132 @@ def find_and_display_isomers(molecule_name_input):
 
             mol_image = draw_molecule(smiles_to_draw)
             if mol_image:
-                isomer_outputs_final.append((mol_image, f"{isomer_display_name}\nSMILES: {smiles_to_draw}"))
-                valid_isomers_count_final += 1
+                isomer_outputs_final_2d.append((mol_image, f"{isomer_display_name}\nSMILES: {smiles_to_draw}"))
+                all_isomers_for_3d_data.append((isomer_display_name, smiles_to_draw)) # Store for 3D
             else:
                 print(f"  Failed to draw image for accepted isomer: CID {final_isomer_entry.cid}, SMILES: {smiles_to_draw}")
 
-        print(f"Displayed {valid_isomers_count_final} isomers in the gallery.")
+        print(f"Displayed {len(isomer_outputs_final_2d)} isomers in the 2D gallery.")
+        print(f"Prepared {len(all_isomers_for_3d_data)} isomers for 3D selection.")
 
-        if not isomer_outputs_final:
+        if not isomer_outputs_final_2d:
             status_message = "ایزومر ساختاری آلکان استاندارد و قابل رسمی برای مولکول وارد شده پیدا نشد."
             if len(valid_structural_alkanes_entries) > 0:
                 status_message += " (برخی ایزومرهای شناسایی شده در مرحله رسم ناموفق بودند یا در فیلترهای نهایی رد شدند.)"
         else:
             status_message = (
-                f"{len(isomer_outputs_final)} ایزومر ساختاری آلکان برای '{molecule_name_input}' "
+                f"{len(isomer_outputs_final_2d)} ایزومر ساختاری آلکان برای '{molecule_name_input}' "
                 f"(فرمول: {molecular_formula}) پیدا و نمایش داده شد. "
                 f"توجه: این ابزار تنها ایزومرهای شامل کربن و هیدروژن، بدون حلقه، بدون پیوند چندگانه و بدون ایزوتوپ را شناسایی می‌کند. "
                 f"(ممکن است ایزومرهای بیشتری نیز در PubChem وجود داشته باشند که در این جستجو دریافت نشده‌اند.)"
             )
         
-        isomer_outputs_final.sort(key=lambda x: x[1])
+        isomer_outputs_final_2d.sort(key=lambda x: x[1])
+        all_isomers_for_3d_data.sort(key=lambda x: x[0]) # Sort 3D data by name too
         
-        # Use gr.update to make them visible and pass content
-        return gr.update(value=isomer_outputs_final, visible=True), gr.update(value=status_message, visible=True)
+        # Prepare 3D dropdown choices
+        dropdown_choices = [name for name, smiles in all_isomers_for_3d_data]
+        
+        # Return all outputs, including the state and 3D dropdown updates
+        return gr.update(value=isomer_outputs_final_2d, visible=True), \
+               gr.update(value=status_message, visible=True), \
+               gr.update(value=all_isomers_for_3d_data, visible=True), \
+               gr.update(choices=dropdown_choices, value=None, visible=True, interactive=True), \
+               "لطفا یک ایزومر از لیست بالا انتخاب کنید تا ساختار سه‌بعدی آن را ببینید.", \
+               gr.update(value="", visible=False)
+
 
     except pcp.PubChemHTTPError as e:
         error_msg = f"خطا در ارتباط با PubChem: {e}. لطفا اتصال اینترنت خود را بررسی کنید یا بعداً امتحان کنید."
         print(error_msg)
         print(f"FULL TRACEBACK for PubChemHTTPError: {traceback.format_exc()}")
-        # Use gr.update to make them visible with an empty gallery and an error message
-        return gr.update(value=[], visible=True), gr.update(value=error_msg, visible=True)
+        return empty_gallery, gr.update(value=error_msg, visible=True), \
+               empty_isomer_data_state, empty_3d_dropdown_choices, empty_3d_status_text, empty_3d_html_viewer
     except Exception as e:
         error_msg = f"یک خطای غیرمنتظره در سرور رخ داد: {e}"
         print(f"FULL TRACEBACK for general Exception: {traceback.format_exc()}")
-        # Use gr.update to make them visible with an empty gallery and an error message
-        return gr.update(value=[], visible=True), gr.update(value=error_msg, visible=True)
+        return empty_gallery, gr.update(value=error_msg, visible=True), \
+               empty_isomer_data_state, empty_3d_dropdown_choices, empty_3d_status_text, empty_3d_html_viewer
+
 
 # --- Gradio Interface ---
-iface = gr.Interface(
-    fn=find_and_display_isomers,
-    inputs=gr.Textbox(
-        label="نام آلکان را وارد کنید", 
-        placeholder="مثال: butane, pentane, hexane",
-        info="نام آلکان مورد نظر خود را به انگلیسی و با حروف کوچک وارد کنید. (مانند: pentane)"
-    ),
-    outputs=[
-        gr.Gallery(
-            label="ایزومرهای یافت شده", 
-            columns=[3], 
-            height="auto", 
-            object_fit="contain",
-            visible=False # <--- این خط اضافه شده
-        ),
-        gr.Textbox(label="وضعیت و پیام‌ها", 
-                   visible=False) # <--- این خط اضافه شده
-    ],
-    title="یابنده و نمایشگر ایزومرهای ساختاری آلکان",
-    description=(
+with gr.Blocks(theme=gr.themes.Soft()) as demo:
+    gr.Markdown("# یابنده و نمایشگر ایزومرهای ساختاری آلکان")
+    gr.Markdown(
         "نام یک آلکان (به انگلیسی) را وارد کنید تا ایزومرهای ساختاری آن (تنها شامل کربن و هیدروژن، "
         "بدون حلقه، بدون پیوند چندگانه، بدون ایزوتوپ و بدون قطعات جدا شده) به همراه ساختار شیمیایی و نام IUPAC (یا رایج) نمایش داده شوند.\n"
-        "اطلاعات از دیتابیس PubChem دریافت شده و ساختارها با استفاده از کتابخانه RDKit رسم می‌شوند."
-    ),
-    examples=[
-        ["butane"], 
-        ["pentane"], 
-        ["hexane"],
-        ["heptane"], 
-        ["octane"]
-    ],
-    allow_flagging='never', 
-    theme=gr.themes.Soft(), 
-    live=False 
-)
+        "اطلاعات از دیتابیس PubChem دریافت شده و ساختارها با استفاده از کتابخانه‌های RDKit و py3Dmol رسم می‌شوند."
+    )
 
-if __name__ == '__main__':
-    iface.launch()
+    with gr.Row():
+        molecule_input = gr.Textbox(
+            label="نام آلکان را وارد کنید", 
+            placeholder="مثال: butane, pentane, hexane",
+            info="نام آلکان مورد نظر خود را به انگلیسی و با حروف کوچک وارد کنید. (مانند: pentane)",
+            scale=3
+        )
+        submit_btn = gr.Button("جستجو", scale=1)
+
+    # Hidden state component to store isomer data for 3D viewer
+    isomer_data_state = gr.State(value=[], visible=False) 
+
+    with gr.Tabs() as tabs:
+        with gr.TabItem("ایزومرهای دو بعدی", id="tab_2d"):
+            gallery_output = gr.Gallery(
+                label="ایزومرهای یافت شده (2D)", 
+                columns=[3], 
+                height="auto", 
+                object_fit="contain",
+                visible=False
+            )
+            status_textbox = gr.Textbox(label="وضعیت و پیام‌ها", visible=False)
+
+        with gr.TabItem("ساختار سه‌بعدی", id="tab_3d"):
+            gr.Markdown("### انتخاب ایزومر برای نمایش سه‌بعدی")
+            # Dropdown for 3D selection, initially hidden and empty
+            three_d_dropdown = gr.Dropdown(
+                label="انتخاب ایزومر", 
+                choices=[], 
+                interactive=True, 
+                visible=False,
+                info="ایزومر مورد نظر را از لیست انتخاب کنید تا ساختار سه‌بعدی آن نمایش داده شود."
+            )
+            # Textbox for 3D status (e.g., instructions or errors)
+            three_d_status_text = gr.Textbox(label="وضعیت نمایش سه‌بعدی", value="لطفا یک آلکان را جستجو کنید.", visible=True)
+            # HTML component for the 3D viewer
+            three_d_viewer = gr.HTML(label="نمایش سه‌بعدی", visible=False, value="")
+    
+    # Define how interactions trigger functions
+    submit_btn.click(
+        fn=find_and_display_isomers,
+        inputs=molecule_input,
+        outputs=[
+            gallery_output, 
+            status_textbox, 
+            isomer_data_state, # This output updates the hidden state
+            three_d_dropdown, # This output updates the dropdown choices
+            three_d_status_text, # Updates 3D tab status text
+            three_d_viewer # Clears/hides 3D viewer initially
+        ]
+    )
+
+    # When an isomer is selected from the 3D dropdown, trigger 3D rendering
+    three_d_dropdown.change(
+        fn=on_3d_dropdown_select,
+        inputs=[three_d_dropdown, isomer_data_state], # Pass selected name and all isomer data
+        outputs=[three_d_status_text, three_d_viewer] # Update 3D status and viewer
+    )
+
+    # Optional: Example inputs
+    gr.Examples(
+        examples=[
+            ["butane"], 
+            ["pentane"], 
+            ["hexane"],
+            ["heptane"], 
+            ["octane"]
+        ],
+        inputs=molecule_input
+    )
+
+demo.launch()
