@@ -25,7 +25,7 @@ def draw_molecule(smiles_string):
 def render_3d_molecule(smiles_string):
     """
     Renders a 3D molecule viewer using py3Dmol for the given SMILES string,
-    generating standalone HTML content compatible with Gradio.
+    generating a standalone HTML content compatible with Gradio.
     """
     if not smiles_string:
         return "Please select a molecule to display its 3D structure.", gr.update(value="", visible=False)
@@ -47,16 +47,33 @@ def render_3d_molecule(smiles_string):
         viewer.setStyle({'stick':{}})
         viewer.zoomTo()
         
-        # Generate standalone HTML content
-        html_content = viewer.js()
-        # Wrap the JavaScript content in a basic HTML structure
+        # Generate the JavaScript content for the viewer
+        js_content = viewer.js()
+        
+        # Create a complete HTML structure with embedded 3Dmol initialization
         full_html = f"""
+        <!DOCTYPE html>
         <html>
         <head>
+            <title>3D Molecule Viewer</title>
             <script src="https://3Dmol.org/build/3Dmol-min.js"></script>
+            <style>
+                body {{ margin: 0; padding: 0; }}
+                #viewer {{ width: 400px; height: 400px; }}
+            </style>
         </head>
         <body>
-            {html_content}
+            <div id="viewer"></div>
+            <script>
+                // Initialize the 3Dmol viewer
+                var viewer = $3Dmol.createViewer(document.getElementById("viewer"), {{ backgroundColor: "white" }});
+                viewer.addModel(`{sdf_string}`, "sdf");
+                viewer.setStyle({{ stick: {{}} });
+                viewer.zoomTo();
+                viewer.render();
+                // Append any additional JS content if needed
+                {js_content}
+            </script>
         </body>
         </html>
         """
@@ -135,7 +152,7 @@ def find_and_display_isomers(molecule_name_input):
 
             if not actual_formula:
                 is_standard_alkane_candidate = False
-                print(f"    Main candidate CID {cid} has no molecular formula.")
+                print(f"    Main candidate CID {cid} has no molecular_formula.")
                 
             if is_standard_alkane_candidate and not c.canonical_smiles:
                 is_standard_alkane_candidate = False
