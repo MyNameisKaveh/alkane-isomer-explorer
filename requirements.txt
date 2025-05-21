@@ -2,3 +2,4 @@ pubchempy
 rdkit-pypi
 gradio
 Pillow
+numpy<2.0
