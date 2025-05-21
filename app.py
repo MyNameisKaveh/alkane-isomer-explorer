@@ -33,17 +33,25 @@ def render_3d_molecule(smiles_string):
         # Generate a basic 3D structure using RDKit's conformer generation
         mol = Chem.MolFromSmiles(smiles_string)
         if not mol:
+            print(f"DEBUG: RDKit could not parse SMILES for 3D: {smiles_string}")
             return f"Error: SMILES '{smiles_string}' cannot be processed.", gr.update(value="", visible=False)
         
         # Add hydrogens for better 3D representation
         mol = Chem.AddHs(mol)
         
         # Generate 3D conformer using ETKDG algorithm and optimize geometry
+        # Warnings like "not removing hydrogen atom without neighbors" are usually benign and don't stop rendering.
         AllChem.EmbedMolecule(mol, AllChem.ETKDGv2())
         AllChem.MMFFOptimizeMolecule(mol) # Optional: further optimize geometry
 
         # Convert RDKit molecule to SDF string (standard format for 3D data)
         sdf_string = Chem.MolToMolBlock(mol)
+        
+        # DEBUGGING: Check if SDF string is empty or problematic
+        if not sdf_string or len(sdf_string.strip()) < 100: # A basic check for content
+            print(f"DEBUG: Generated SDF string looks short/empty for SMILES {smiles_string}:\n{sdf_string}")
+            return f"Error: Failed to generate valid 3D data for {smiles_string}.", gr.update(value="", visible=False)
+
 
         # Create py3Dmol viewer
         viewer = py3Dmol.view(width=400, height=400) # Define viewer size
@@ -53,6 +61,11 @@ def render_3d_molecule(smiles_string):
 
         # Replicate py3Dmol HTML content for Gradio
         html_content = viewer.replicate_html()
+
+        # DEBUGGING: Print a snippet of the generated HTML to the console
+        print(f"DEBUG: Generated 3D HTML content length for '{smiles_string}': {len(html_content)}")
+        print(f"DEBUG: First 500 chars of 3D HTML for '{smiles_string}':\n{html_content[:500]}...")
+        
         return "3D structure of the molecule:", gr.update(value=html_content, visible=True)
     except Exception as e:
         print(f"Error rendering 3D molecule for SMILES {smiles_string}: {e}")
@@ -73,8 +86,8 @@ def on_3d_dropdown_select(selected_name, all_isomers_data):
             break
     
     if selected_smiles:
-        status_text, html_content = render_3d_molecule(selected_smiles)
-        return status_text, html_content
+        status_text, html_content_update = render_3d_molecule(selected_smiles) # <<< This calls render_3d_molecule
+        return status_text, html_content_update # <<< This returns the updates
     else:
         return "Error: Selected isomer not found.", gr.update(value="", visible=False)
 
