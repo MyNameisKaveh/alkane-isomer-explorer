@@ -1,4 +1,5 @@
 pubchempy
+py3Dmol
 rdkit-pypi
 gradio
 Pillow
