@@ -1,4 +1,10 @@
+# Random comment to force a fresh build and bypass cache (change this line each time you push)
+# Build ID: 20250522_2330
 pubchempy
 rdkit-pypi
 gradio==4.44.1
 numpy==1.26.4
+# Explicitly pin dependencies that gradio_client might be sensitive to in older environments
+pydantic<2 # Ensure pydantic is not v2+ (gradio client might rely on v1)
+fastapi>=0.100.0,<0.104.0 # Matching internal FastAPI version for some Gradio 4.x
+uvicorn>=0.22.0,<0.23.0 # Matching internal Uvicorn version
