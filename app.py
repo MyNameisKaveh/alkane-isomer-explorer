@@ -1,10 +1,10 @@
 ```python
 import streamlit as st
+import streamlit.components.v1 as components
 import pubchempy as pcp
 from rdkit import Chem
 from rdkit.Chem import Draw, AllChem
 import traceback
-from PIL import Image
 
 def draw_molecule(smiles_string):
     """
@@ -24,23 +24,51 @@ def draw_molecule(smiles_string):
 
 def generate_3d_view(smiles_string):
     """
-    Generates a static 3D visualization of a molecule from a SMILES string using RDKit.
-    Returns a PIL Image object for Streamlit.
+    Generates an HTML page with 3Dmol.js to display a molecule from a SMILES string.
+    Returns HTML content as a string.
     """
     try:
         mol = Chem.MolFromSmiles(smiles_string)
         if not mol:
-            return None
+            return "<div>Error: Invalid SMILES string.</div>"
         mol = Chem.AddHs(mol)  # Add hydrogens for proper 3D structure
         AllChem.EmbedMolecule(mol, randomSeed=42)  # Generate 3D coordinates
         AllChem.MMFFOptimizeMolecule(mol)  # Optimize geometry
-        
-        # Generate a 3D image
-        img = Draw.MolToImage(mol, size=(400, 400), kekulize=False, use3D=True)
-        return img
+        xyz = Chem.MolToXYZBlock(mol)  # Convert to XYZ format
+
+        # Create HTML page with 3Dmol.js
+        html_content = f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>3D Molecule Viewer</title>
+            <script src="https://3dmol.csb.pitt.edu/build/3Dmol-min.js"></script>
+            <style>
+                #viewer {{
+                    width: 400px;
+                    height: 400px;
+                    position: relative;
+                    margin: auto;
+                }}
+            </style>
+        </head>
+        <body>
+            <div id="viewer"></div>
+            <script>
+                let viewer = $3Dmol.createViewer("viewer");
+                viewer.addModel(`{xyz}`, "xyz");
+                viewer.setStyle({{stick: {{}}}});
+                viewer.setBackgroundColor(0xffffff);
+                viewer.zoomTo();
+                viewer.render();
+            </script>
+        </body>
+        </html>
+        """
+        return html_content
     except Exception as e:
         print(f"Error generating 3D view for SMILES {smiles_string}: {e}")
-        return None
+        return f"<div>Error generating 3D view: {str(e)}</div>"
 
 def find_and_display_isomers(molecule_name_input):
     """
@@ -241,7 +269,7 @@ def main():
         """
         # یابنده و نمایشگر ایزومرهای ساختاری آلکان
         نام یک آلکان (به انگلیسی) را وارد کنید تا ایزومرهای ساختاری آن (تنها شامل کربن و هیدروژن، بدون حلقه، بدون پیوند چندگانه، بدون ایزوتوپ) به همراه ساختار شیمیایی و نام IUPAC (یا رایج) نمایش داده شوند.  
-        اطلاعات از دیتابیس PubChem دریافت شده و ساختارها با استفاده از RDKit رسم می‌شوند.
+        اطلاعات از دیتابیس PubChem دریافت شده و ساختارها با استفاده از RDKit و 3Dmol.js رسم می‌شوند.
         """
     )
 
@@ -298,11 +326,11 @@ def main():
         # Find the SMILES for the selected isomer
         selected_smiles = next((smiles for name, smiles in st.session_state.isomer_data if name == selected_isomer), None)
         if selected_smiles:
-            three_d_image = generate_3d_view(selected_smiles)
-            if three_d_image:
-                st.image(three_d_image, caption=f"نمایش سه‌بعدی: {selected_isomer}", use_column_width=False)
+            three_d_html = generate_3d_view(selected_smiles)
+            if three_d_html.startswith("<div>Error"):
+                st.error(three_d_html.replace("<div>", "").replace("</div>", ""))
             else:
-                st.error(f"خطا در تولید نمایش سه‌بعدی برای {selected_isomer}")
+                components.html(three_d_html, height=450, scrolling=False)
 
     # Examples
     st.markdown("### مثال‌ها")
