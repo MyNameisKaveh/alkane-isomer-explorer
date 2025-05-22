@@ -44,7 +44,6 @@ def generate_3d_view(smiles_string):
         
         # Convert to HTML for Gradio
         html = view.show()
-        # Extract the HTML content (py3Dmol.show() returns a string with HTML/JS)
         return f"""
         <div style='width: 400px; height: 400px;'>
             {html}
@@ -54,13 +53,13 @@ def generate_3d_view(smiles_string):
         print(f"Error generating 3D view for SMILES {smiles_string}: {e}")
         return f"Error generating 3D view: {str(e)}"
 
-def find_and_display_isomers(molecule_name_input, selected_isomer=0):
+def find_and_display_isomers(molecule_name_input, selected_isomer_index=0, isomer_data_state=None):
     """
     Finds and displays structural alkane isomers with 2D images and a single 3D viewer.
-    Returns gallery, status, 3D view HTML, dropdown choices, and selected isomer index.
+    Returns gallery, status, 3D view HTML, dropdown choices, selected isomer index, and updated isomer_data_state.
     """
     if not molecule_name_input or not molecule_name_input.strip():
-        return gr.update(value=[], visible=True), gr.update(value="لطفا نام یک مولکول را وارد کنید.", visible=True), gr.update(value="", visible=True), gr.update(choices=[], visible=True), gr.update(value=0, visible=True)
+        return gr.update(value=[], visible=True), gr.update(value="لطفا نام یک مولکول را وارد کنید.", visible=True), gr.update(value="", visible=True), gr.update(choices=[], visible=True), gr.update(value=0, visible=True), gr.update(value=[])
 
     molecule_name = molecule_name_input.strip().lower()
     print(f"Processing request for: '{molecule_name}'")
@@ -78,7 +77,7 @@ def find_and_display_isomers(molecule_name_input, selected_isomer=0):
         if not compounds:
             status_message = f"مولکول '{molecule_name}' در PubChem یافت نشد. لطفا املای آن را بررسی کنید."
             print(status_message)
-            return gr.update(value=[], visible=True), gr.update(value=status_message, visible=True), gr.update(value="", visible=True), gr.update(choices=[], visible=True), gr.update(value=0, visible=True)
+            return gr.update(value=[], visible=True), gr.update(value=status_message, visible=True), gr.update(value="", visible=True), gr.update(choices=[], visible=True), gr.update(value=0, visible=True), gr.update(value=[])
         
         print(f"Found {len(compounds)} potential matches for '{molecule_name}'. Checking them for standard alkane properties...")
         
@@ -136,7 +135,7 @@ def find_and_display_isomers(molecule_name_input, selected_isomer=0):
         if not main_compound_obj or not molecular_formula:
             status_message = f"آلکان ساختاری استاندارد با نام '{molecule_name}' یافت نشد."
             print(status_message)
-            return gr.update(value=[], visible=True), gr.update(value=status_message, visible=True), gr.update(value="", visible=True), gr.update(choices=[], visible=True), gr.update(value=0, visible=True)
+            return gr.update(value=[], visible=True), gr.update(value=status_message, visible=True), gr.update(value="", visible=True), gr.update(choices=[], visible=True), gr.update(value=0, visible=True), gr.update(value=[])
         
         print(f"Searching for isomers with formula: {molecular_formula} (up to 200 candidates)...")
         isomers_found_raw = pcp.get_compounds(molecular_formula, 'formula', listkey_count=200)
@@ -144,7 +143,7 @@ def find_and_display_isomers(molecule_name_input, selected_isomer=0):
         if not isomers_found_raw:
             status_message = f"ایزومری برای فرمول {molecular_formula} یافت نشد."
             print(status_message)
-            return gr.update(value=[], visible=True), gr.update(value=status_message, visible=True), gr.update(value="", visible=True), gr.update(choices=[], visible=True), gr.update(value=0, visible=True)
+            return gr.update(value=[], visible=True), gr.update(value=status_message, visible=True), gr.update(value="", visible=True), gr.update(choices=[], visible=True), gr.update(value=0, visible=True), gr.update(value=[])
 
         print(f"Found {len(isomers_found_raw)} potential isomer entries. Filtering for valid alkane isomers...")
         
@@ -225,7 +224,7 @@ def find_and_display_isomers(molecule_name_input, selected_isomer=0):
             status_message = "ایزومر ساختاری آلکان استاندارد و قابل رسمی پیدا نشد."
             if len(valid_structural_alkanes_entries) > 0:
                 status_message += " (برخی ایزومرها در رسم ناموفق بودند.)"
-            return gr.update(value=[], visible=True), gr.update(value=status_message, visible=True), gr.update(value="", visible=True), gr.update(choices=[], visible=True), gr.update(value=0, visible=True)
+            return gr.update(value=[], visible=True), gr.update(value=status_message, visible=True), gr.update(value="", visible=True), gr.update(choices=[], visible=True), gr.update(value=0, visible=True), gr.update(value=[])
         else:
             status_message = (
                 f"{len(isomer_outputs_final)} ایزومر ساختاری آلکان برای '{molecule_name_input}' "
@@ -238,7 +237,7 @@ def find_and_display_isomers(molecule_name_input, selected_isomer=0):
         dropdown_choices = [name for name, _ in isomer_data]
         
         # Generate 3D view for the selected isomer
-        selected_index = min(selected_isomer, len(isomer_data) - 1) if isomer_data else 0
+        selected_index = min(selected_isomer_index, len(isomer_data) - 1) if isomer_data else 0
         three_d_view = generate_3d_view(isomer_data[selected_index][1]) if isomer_data else ""
 
         return (
@@ -246,17 +245,29 @@ def find_and_display_isomers(molecule_name_input, selected_isomer=0):
             gr.update(value=status_message, visible=True),
             gr.update(value=three_d_view, visible=True),
             gr.update(choices=dropdown_choices, visible=True),
-            gr.update(value=selected_index, visible=True)
+            gr.update(value=selected_index, visible=True),
+            gr.update(value=isomer_data)
         )
 
     except pcp.PubChemHTTPError as e:
         error_msg = f"خطا در ارتباط با PubChem: {e}. لطفا اتصال اینترنت خود را بررسی کنید."
         print(f"FULL TRACEBACK: {traceback.format_exc()}")
-        return gr.update(value=[], visible=True), gr.update(value=error_msg, visible=True), gr.update(value="", visible=True), gr.update(choices=[], visible=True), gr.update(value=0, visible=True)
+        return gr.update(value=[], visible=True), gr.update(value=error_msg, visible=True), gr.update(value="", visible=True), gr.update(choices=[], visible=True), gr.update(value=0, visible=True), gr.update(value=[])
     except Exception as e:
         error_msg = f"خطای غیرمنتظره: {e}"
         print(f"FULL TRACEBACK: {traceback.format_exc()}")
-        return gr.update(value=[], visible=True), gr.update(value=error_msg, visible=True), gr.update(value="", visible=True), gr.update(choices=[], visible=True), gr.update(value=0, visible=True)
+        return gr.update(value=[], visible=True), gr.update(value=error_msg, visible=True), gr.update(value="", visible=True), gr.update(choices=[], visible=True), gr.update(value=0, visible=True), gr.update(value=[])
+
+def get_isomer_index(selected_name, isomer_data_state):
+    """
+    Maps selected isomer name to its index in isomer_data_state.
+    """
+    if not isomer_data_state or not selected_name:
+        return 0
+    for i, (name, _) in enumerate(isomer_data_state):
+        if name == selected_name:
+            return i
+    return 0
 
 # --- Gradio Interface ---
 with gr.Blocks(theme=gr.themes.Soft()) as iface:
@@ -289,31 +300,32 @@ with gr.Blocks(theme=gr.themes.Soft()) as iface:
             isomer_dropdown = gr.Dropdown(
                 label="انتخاب ایزومر برای نمایش سه‌بعدی",
                 choices=[],
-                value=0,
+                value=None,
                 visible=False,
                 interactive=True
             )
     
     submit_button = gr.Button("جستجوی ایزومرها")
     
-    # State to track selected isomer index
+    # States to track selected isomer index and isomer data
     selected_isomer_state = gr.State(value=0)
+    isomer_data_state = gr.State(value=[])
     
     # Define interactions
     submit_button.click(
         fn=find_and_display_isomers,
-        inputs=[molecule_input, selected_isomer_state],
-        outputs=[gallery, status, three_d_viewer, isomer_dropdown, selected_isomer_state]
+        inputs=[molecule_input, selected_isomer_state, isomer_data_state],
+        outputs=[gallery, status, three_d_viewer, isomer_dropdown, selected_isomer_state, isomer_data_state]
     )
     
     isomer_dropdown.change(
-        fn=lambda x: x,
-        inputs=isomer_dropdown,
+        fn=get_isomer_index,
+        inputs=[isomer_dropdown, isomer_data_state],
         outputs=selected_isomer_state
     ).then(
         fn=find_and_display_isomers,
-        inputs=[molecule_input, selected_isomer_state],
-        outputs=[gallery, status, three_d_viewer, isomer_dropdown, selected_isomer_state]
+        inputs=[molecule_input, selected_isomer_state, isomer_data_state],
+        outputs=[gallery, status, three_d_viewer, isomer_dropdown, selected_isomer_state, isomer_data_state]
     )
 
     gr.Examples(
