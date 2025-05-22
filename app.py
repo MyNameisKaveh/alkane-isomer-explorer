@@ -105,12 +105,11 @@ def get_3d_viewer_html(cid, style='stick'):
     return html_output
 
 
-# --- تابع اصلی find_and_display_isomers با خروجی‌های تغییر یافته برای gr.Dropdown.update ---
+# --- تابع اصلی find_and_display_isomers با خروجی‌های تغییر یافته برای gr.update() ---
 def find_and_display_isomers(molecule_name_input):
     if not molecule_name_input or not molecule_name_input.strip():
         # بازگشت مقادیر پیش‌فرض برای تمام خروجی‌ها
-        # gr.Dropdown.update({}, None) برای پاک کردن دراپ‌داون
-        return [], gr.Dropdown.update(choices=[], value=None), "<p style='text-align: center; color: gray;'>نام یک آلکان را وارد کنید تا ایزومرها نمایش داده شوند.</p>", "لطفا نام یک مولکول را وارد کنید."
+        return [], gr.update(choices=[], value=None), "<p style='text-align: center; color: gray;'>نام یک آلکان را وارد کنید تا ایزومرها نمایش داده شوند.</p>", "لطفا نام یک مولکول را وارد کنید."
 
     molecule_name = molecule_name_input.strip().lower()
     print(f"Processing request for: '{molecule_name}'")
@@ -129,7 +128,7 @@ def find_and_display_isomers(molecule_name_input):
         if not compounds:
             status_message = f"مولکول '{molecule_name}' در PubChem یافت نشد."
             print(status_message)
-            return [], gr.Dropdown.update(choices=[], value=None), "<p style='text-align: center; color: red;'>مولکول یافت نشد.</p>", status_message
+            return [], gr.update(choices=[], value=None), "<p style='text-align: center; color: red;'>مولکول یافت نشد.</p>", status_message
         
         # --- (بخش پیدا کردن main_compound_obj و molecular_formula - بدون تغییر) ---
         print(f"Found {len(compounds)} potential matches for '{molecule_name}'. Checking them...")
@@ -193,7 +192,7 @@ def find_and_display_isomers(molecule_name_input):
         if not main_compound_obj or not molecular_formula: 
             status_message = f"آلکان استاندارد با نام '{molecule_name}' در PubChem یافت نشد."
             print(status_message)
-            return [], gr.Dropdown.update(choices=[], value=None), "<p style='text-align: center; color: red;'>آلکان استاندارد یافت نشد.</p>", status_message
+            return [], gr.update(choices=[], value=None), "<p style='text-align: center; color: red;'>آلکان استاندارد یافت نشد.</p>", status_message
         
         # --- (بخش جستجوی ایزومرها و فیلترینگ - بدون تغییر) ---
         print(f"Proceeding with main compound: CID {main_compound_obj.cid}, Formula: {molecular_formula}")
@@ -203,7 +202,7 @@ def find_and_display_isomers(molecule_name_input):
         if not isomers_found_raw:
             status_message = f"ایزومری برای فرمول {molecular_formula} یافت نشد."
             print(status_message)
-            return [], gr.Dropdown.update(choices=[], value=None), "<p style='text-align: center; color: orange;'>ایزومری یافت نشد.</p>", status_message
+            return [], gr.update(choices=[], value=None), "<p style='text-align: center; color: orange;'>ایزومری یافت نشد.</p>", status_message
 
         print(f"Found {len(isomers_found_raw)} potential isomer entries from PubChem. Filtering for true structural alkane isomers...")
         
@@ -302,7 +301,7 @@ def find_and_display_isomers(molecule_name_input):
             status_message = "ایزومر آلکان استاندارد و قابل رسمی پیدا نشد."
             if len(valid_structural_alkanes_entries) > 0:
                 status_message += " (برخی در مرحله رسم ناموفق بودند یا کاندیدای معتبری نبودند)."
-            return [], gr.Dropdown.update(choices=[], value=None), "<p style='text-align: center; color: orange;'>ایزومرها یافت نشدند یا قابل رسم نبودند.</p>", status_message
+            return [], gr.update(choices=[], value=None), "<p style='text-align: center; color: orange;'>ایزومرها یافت نشدند یا قابل رسم نبودند.</p>", status_message
         else:
             status_message = f"{len(isomer_outputs_final_2d)} ایزومر ساختاری آلکان برای '{molecule_name_input}' (فرمول: {molecular_formula}) پیدا و نمایش داده شد."
         
@@ -312,8 +311,8 @@ def find_and_display_isomers(molecule_name_input):
         # اولین ایزومر را به عنوان پیش‌فرض برای نمایش 3D انتخاب می‌کنیم
         initial_3d_cid = isomer_choices_for_3d[0][1] if isomer_choices_for_3d else None
         
-        # آماده کردن gr.Dropdown.update برای به‌روزرسانی همزمان choices و value
-        dropdown_update = gr.Dropdown.update(
+        # آماده کردن gr.update() برای به‌روزرسانی همزمان choices و value
+        dropdown_update = gr.update(
             choices=isomer_choices_for_3d, 
             value=initial_3d_cid # مقدار پیش‌فرض را تنظیم می‌کند
         )
@@ -327,16 +326,17 @@ def find_and_display_isomers(molecule_name_input):
         error_msg = f"خطا در ارتباط با PubChem: {e}."
         print(error_msg)
         print(f"FULL TRACEBACK for PubChemHTTPError: {traceback.format_exc()}")
-        return [], gr.Dropdown.update(choices=[], value=None), f"<p style='text-align: center; color: red;'>خطا در PubChem: {e}</p>", error_msg
+        return [], gr.update(choices=[], value=None), f"<p style='text-align: center; color: red;'>خطا در PubChem: {e}</p>", error_msg
     except Exception as e:
         error_msg = f"یک خطای غیرمنتظره در سرور رخ داد: {e}"
         print(f"FULL TRACEBACK for general Exception: {traceback.format_exc()}")
-        return [], gr.Dropdown.update(choices=[], value=None), f"<p style='text-align: center; color: red;'>خطای غیرمنتظره: {e}</p>", error_msg
+        return [], gr.update(choices=[], value=None), f"<p style='text-align: center; color: red;'>خطای غیرمنتظره: {e}</p>", error_msg
 
 # --- بخش Gradio Interface (با استفاده از gr.Blocks) ---
 
 with gr.Blocks(theme=gr.themes.Soft(), title="یابنده و نمایشگر ایزومرهای آلکان") as demo:
     # این تگ script کتابخانه 3Dmol.js را یک بار در ابتدای بارگذاری صفحه، بارگذاری می‌کند
+    # این خط بسیار مهم است!
     gr.HTML('<script src="https://3dmol.org/build/3Dmol-min.js"></script>')
 
     gr.Markdown(
@@ -397,7 +397,7 @@ with gr.Blocks(theme=gr.themes.Soft(), title="یابنده و نمایشگر ا�
         inputs=[molecule_name_input],
         outputs=[
             gallery_2d_output,           # 2D gallery
-            isomer_3d_selector,          # 3D dropdown (will now receive gr.Dropdown.update object)
+            isomer_3d_selector,          # 3D dropdown (will now receive gr.update object)
             viewer_3d_html,              # 3D viewer HTML (initial 3D of first isomer)
             status_message_output        # Status message
         ],
