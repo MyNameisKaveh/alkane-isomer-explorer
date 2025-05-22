@@ -9,10 +9,13 @@ import gradio as gr
 import traceback
 import os 
 import tempfile 
-import uuid # برای تولید شناسه‌های یکتا
+import uuid # برای تولید شناسه‌های یکتا برای div های 3D viewer
 
 # --- تابع کمکی برای رسم مولکول 2D ---
 def draw_molecule(smiles_string):
+    """
+    مولکول را از SMILES رسم کرده و یک تصویر PIL Image برمی‌گرداند.
+    """
     try:
         mol = Chem.MolFromSmiles(smiles_string)
         if mol:
@@ -25,7 +28,7 @@ def draw_molecule(smiles_string):
         print(f"Error drawing molecule for SMILES {smiles_string}: {e}")
         return None
 
-# --- تابع برای نمایش سه‌بعدی (بهینه‌سازی شده برای فراخوانی تابع JavaScript) ---
+# --- تابع برای نمایش سه‌بعدی (اصلاح شده برای Gradio و خطای f-string و اجرای پایدارتر JS) ---
 def get_3d_viewer_html(cid, style='stick'):
     """
     ساختار سه‌بعدی یک مولکول را بر اساس CID آن از PubChem دریافت کرده و
@@ -50,31 +53,34 @@ def get_3d_viewer_html(cid, style='stick'):
         if not sdf_content:
             html_output = f"<p style='color: red; text-align: center;'>فایل 3D SDF برای CID {cid} خالی بود. ممکن است ساختار سه‌بعدی در دسترس نباشد.</p>"
         else:
-            # Escape کردن کاراکترهای خاص (newline, backslash, single quote) برای استفاده در رشته JavaScript
-            # لازم است که محتوای sdf_content به عنوان یک رشته لیتِرال معتبر در JavaScript استفاده شود.
+            # گام 1: Escape کردن کاراکترهای خاص برای JavaScript (newline, backslash, single quote)
             js_sdf_content_safe = sdf_content.replace('\\', '\\\\').replace('\n', '\\n').replace("'", "\\'")
-
+            
+            # تولید یک ID یکتا برای div نمایشگر 3D.
             viewer_div_id = f"viewer_{uuid.uuid4().hex}" 
 
             # ساخت HTML که شامل یک div و یک تگ script برای فراخوانی تابع JavaScript `render3dmol` است.
-            # `render3dmol` باید قبلاً در صفحه توسط تگ `<script>` اولیه تعریف شده باشد.
+            # این فراخوانی داخل setTimeout قرار می‌گیرد تا اطمینان حاصل شود که div در DOM آماده است.
             html_output = f"""
             <div id="{viewer_div_id}" style="height: 400px; width: 450px; margin: auto; border: 1px solid #ccc; border-radius: 5px;"></div>
             <script type="text/javascript">
-                // اطمینان از وجود تابع `render3dmol` قبل از فراخوانی
-                if (typeof render3dmol === 'function') {{
-                    render3dmol(
-                        '{viewer_div_id}', 
-                        '{js_sdf_content_safe}', // محتوای SDF Escape شده
-                        '{style}'
-                    );
-                }} else {{
-                    console.error('render3dmol function not found. 3Dmol.js or custom JS might not be loaded correctly.');
-                    var element = document.getElementById('{viewer_div_id}');
-                    if (element) {{
-                        element.innerHTML = "<p style='color: red; text-align: center;'>خطا: تابع رندرینگ 3Dmol بارگذاری نشده است.</p>";
+                // با یک تاخیر جزئی (50 میلی‌ثانیه) تابع render3dmol را فراخوانی کن
+                // این به مرورگر فرصت می‌دهد تا div را به DOM اضافه کند.
+                setTimeout(function() {{ 
+                    if (typeof render3dmol === 'function') {{
+                        render3dmol(
+                            '{viewer_div_id}', 
+                            '{js_sdf_content_safe}', 
+                            '{style}'
+                        );
+                    }} else {{
+                        console.error('render3dmol function not found. 3Dmol.js or custom JS might not be loaded correctly.');
+                        var element = document.getElementById('{viewer_div_id}');
+                        if (element) {{
+                            element.innerHTML = "<p style='color: red; text-align: center;'>خطا: تابع رندرینگ 3Dmol بارگذاری نشده است.</p>";
+                        }}
                     }}
-                }}
+                }}, 50); // 50ms delay
             </script>
             """
 
@@ -91,6 +97,10 @@ def get_3d_viewer_html(cid, style='stick'):
 
 # --- تابع اصلی find_and_display_isomers (اکنون از gr.update() استفاده می‌کند) ---
 def find_and_display_isomers(molecule_name_input):
+    """
+    ایزومرهای آلکان را پیدا کرده، ساختارهای 2D را آماده می‌کند،
+    و داده‌ها را برای Dropdown و نمایش 3D بازمی‌گرداند.
+    """
     if not molecule_name_input or not molecule_name_input.strip():
         return [], gr.update(choices=[], value=None), "<p style='text-align: center; color: gray;'>نام یک آلکان را وارد کنید تا ایزومرها نمایش داده شوند.</p>", "لطفا نام یک مولکول را وارد کنید."
 
@@ -314,10 +324,12 @@ def find_and_display_isomers(molecule_name_input):
 
 with gr.Blocks(theme=gr.themes.Soft(), title="یابنده و نمایشگر ایزومرهای آلکان") as demo:
     # این تگ script اولویت بالایی دارد و کتابخانه 3Dmol.js و تابع کمکی render3dmol را تعریف می‌کند.
+    # این تابع JavaScript یک بار در ابتدای بارگذاری صفحه تعریف می‌شود و در Global Scope در دسترس خواهد بود.
     gr.HTML("""
     <script src="https://3dmol.org/build/3Dmol-min.js"></script>
     <script type="text/javascript">
         // این تابع JavaScript مسئول رندر کردن مدل 3D در یک div مشخص است.
+        // پارامترها: id دایو هدف، محتوای SDF (رشته), استایل نمایش
         function render3dmol(divId, sdfContent, style) {
             var element = document.getElementById(divId);
             if (!element) { 
