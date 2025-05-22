@@ -1,7 +1,3 @@
+streamlit==1.39.0
 pubchempy
-py3Dmol
-rdkit-pypi
-gradio
-Pillow
-numpy<2.0
-streamlit
+rdkit
