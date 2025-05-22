@@ -19,5 +19,5 @@ jobs:
         # دستور زیر را با اطلاعات خودتان جایگزین کنید
         # YOUR_HF_USERNAME: نام کاربری شما در Hugging Face
         # YOUR_SPACE_NAME: نام Space شما در Hugging Face
-        run: git push https://Andolinism:${HF_TOKEN}@huggingface.co/spaces/Andolinism/isomers main -f
+        run: git push https://Andolinism:${HF_TOKEN}@huggingface.co/spaces/Andolinism/Andolinism/alkane-isomer-viewer main -f
         # مثال: git push https://Andolinism:${HF_TOKEN}@huggingface.co/spaces/Andolinism/protein-profile-viewer main -f
