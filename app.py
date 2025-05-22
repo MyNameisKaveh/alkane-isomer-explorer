@@ -1,7 +1,7 @@
 import pubchempy as pcp
 from rdkit import Chem
 from rdkit.Chem.Draw import MolToImage
-from rdkit.Chem import AllChem
+from rdkit.Chem import AllChem  # FIX: Import AllChem explicitly for 3D conformer generation
 import gradio as gr
 import traceback
 import py3Dmol
@@ -24,63 +24,49 @@ def draw_molecule(smiles_string):
 
 def render_3d_molecule(smiles_string):
     """
-    Renders a 3D molecule viewer using py3Dmol for the given SMILES string,
-    generating a standalone HTML content compatible with Gradio.
+    Renders a 3D molecule viewer using py3Dmol for the given SMILES string.
     """
     if not smiles_string:
         return "Please select a molecule to display its 3D structure.", gr.update(value="", visible=False)
 
     try:
+        # Generate a basic 3D structure using RDKit's conformer generation
         mol = Chem.MolFromSmiles(smiles_string)
         if not mol:
             print(f"DEBUG: RDKit could not parse SMILES for 3D: {smiles_string}")
             return f"Error: SMILES '{smiles_string}' cannot be processed.", gr.update(value="", visible=False)
         
+        # Add hydrogens for better 3D representation
         mol = Chem.AddHs(mol)
+        
+        # Generate 3D conformer using ETKDG algorithm and optimize geometry
+        # Warnings like "not removing hydrogen atom without neighbors" are usually benign and don't stop rendering.
         AllChem.EmbedMolecule(mol, AllChem.ETKDGv2())
-        AllChem.MMFFOptimizeMolecule(mol)
+        AllChem.MMFFOptimizeMolecule(mol) # Optional: further optimize geometry
+
+        # Convert RDKit molecule to SDF string (standard format for 3D data)
         sdf_string = Chem.MolToMolBlock(mol)
         
-        # Debugging: Print SDF string to verify
-        print(f"DEBUG: SDF String for {smiles_string}:\n{sdf_string}")
+        # DEBUGGING: Check if SDF string is empty or problematic
+        if not sdf_string or len(sdf_string.strip()) < 100: # A basic check for content
+            print(f"DEBUG: Generated SDF string looks short/empty for SMILES {smiles_string}:\n{sdf_string}")
+            return f"Error: Failed to generate valid 3D data for {smiles_string}.", gr.update(value="", visible=False)
+
+
+        # Create py3Dmol viewer
+        viewer = py3Dmol.view(width=400, height=400) # Define viewer size
+        viewer.addModel(sdf_string, 'sdf') # Add the molecule model
+        viewer.setStyle({'stick':{}}) # Display as sticks (can be 'sphere', 'line', 'cartoon' for proteins etc.)
+        viewer.zoomTo() # Zoom to fit the molecule
+
+        # Replicate py3Dmol HTML content for Gradio
+        html_content = viewer.replicate_html()
+
+        # DEBUGGING: Print a snippet of the generated HTML to the console
+        print(f"DEBUG: Generated 3D HTML content length for '{smiles_string}': {len(html_content)}")
+        print(f"DEBUG: First 500 chars of 3D HTML for '{smiles_string}':\n{html_content[:500]}...")
         
-        # Escape SDF string for JavaScript
-        sdf_escaped = sdf_string.replace("'", "\\'").replace("\n", "\\n")
-        full_html = f"""
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <title>3D Molecule Viewer</title>
-            <script src="https://3Dmol.org/build/3Dmol-min.js"></script>
-            <style>
-                body {{ margin: 0; padding: 0; }}
-                #viewer {{ width: 400px; height: 400px; border: 1px solid #ccc; }}
-            </style>
-        </head>
-        <body>
-            <div id="viewer"></div>
-            <script>
-                // Check if 3Dmol is loaded
-                if (typeof $3Dmol === 'undefined') {{
-                    document.getElementById('viewer').innerText = 'Error: 3Dmol.js failed to load. Check your internet connection or browser settings.';
-                }} else {{
-                    var viewer = $3Dmol.createViewer(document.getElementById('viewer'), {{ backgroundColor: "white" }});
-                    try {{
-                        viewer.addModel('{sdf_escaped}', 'sdf');
-                        viewer.setStyle({{ stick: {{}} }});
-                        viewer.zoomTo();
-                        viewer.render();
-                    }} catch (e) {{
-                        document.getElementById('viewer').innerText = 'Error rendering 3D model: ' + e.message;
-                    }}
-                }}
-            </script>
-        </body>
-        </html>
-        """
-        
-        print(f"DEBUG: Generated 3D HTML content length for '{smiles_string}': {len(full_html)}")
-        return "3D structure of the molecule:", gr.update(value=full_html, visible=True)
+        return "3D structure of the molecule:", gr.update(value=html_content, visible=True)
     except Exception as e:
         print(f"Error rendering 3D molecule for SMILES {smiles_string}: {e}")
         return f"Error in 3D display: {e}", gr.update(value="", visible=False)
@@ -91,7 +77,7 @@ def on_3d_dropdown_select(selected_name, all_isomers_data):
     Finds the SMILES for the selected name and renders the 3D view.
     """
     if not selected_name:
-        return "", gr.update(value="", visible=False)
+        return "", gr.update(value="", visible=False) # Clear 3D viewer if no selection
     
     selected_smiles = None
     for name, smiles in all_isomers_data:
@@ -100,8 +86,8 @@ def on_3d_dropdown_select(selected_name, all_isomers_data):
             break
     
     if selected_smiles:
-        status_text, html_content_update = render_3d_molecule(selected_smiles)
-        return status_text, html_content_update
+        status_text, html_content_update = render_3d_molecule(selected_smiles) # <<< This calls render_3d_molecule
+        return status_text, html_content_update # <<< This returns the updates
     else:
         return "Error: Selected isomer not found.", gr.update(value="", visible=False)
 
@@ -110,10 +96,12 @@ def find_and_display_isomers(molecule_name_input):
     Finds and displays structural alkane isomers for a given molecule name.
     Also prepares data for the 3D viewer.
     """
+    # Initialize outputs for gr.update(). We need to return values for all interface outputs.
+    # The state component will store (name, smiles) tuples.
     empty_gallery = gr.update(value=[], visible=False)
     initial_status_text = ""
     initial_status_text_visible = False
-    empty_isomer_data_state = []
+    empty_isomer_data_state = [] # gr.State does not take 'visible' argument
     empty_3d_dropdown_choices = gr.update(choices=[], value=None, visible=False)
     empty_3d_status_text = ""
     empty_3d_html_viewer = gr.update(value="", visible=False)
@@ -129,7 +117,7 @@ def find_and_display_isomers(molecule_name_input):
     
     try:
         print(f"Searching for compound: '{molecule_name}' in PubChem (up to 10 candidates)...")
-        compounds = pcp.get_compounds(molecule_name, 'name', listkey_count=10)
+        compounds = pcp.get_compounds(molecule_name, 'name', listkey_count=10) 
         
         main_compound_obj = None
         molecular_formula = None
@@ -142,6 +130,7 @@ def find_and_display_isomers(molecule_name_input):
         
         print(f"Found {len(compounds)} potential matches for '{molecule_name}'. Checking them for standard alkane properties...")
         
+        # This loop tries to find the most relevant "alkane" match for the input name
         for i, c in enumerate(compounds):
             cid = c.cid
             common_name = c.synonyms[0] if c.synonyms else "N/A"
@@ -149,12 +138,14 @@ def find_and_display_isomers(molecule_name_input):
             
             print(f"  Checking main compound candidate {i+1}: CID {cid}, Name: '{common_name}', Formula: '{actual_formula}'")
 
-            is_standard_alkane_candidate = True
+            is_standard_alkane_candidate = True 
 
+            # Must have a molecular formula
             if not actual_formula:
                 is_standard_alkane_candidate = False
-                print(f"    Main candidate CID {cid} has no molecular_formula.")
+                print(f"    Main candidate CID {cid} has no molecular formula.")
                 
+            # Must have a SMILES string
             if is_standard_alkane_candidate and not c.canonical_smiles:
                 is_standard_alkane_candidate = False
                 print(f"    Main candidate CID {cid} has no SMILES string for detailed check.")
@@ -163,10 +154,12 @@ def find_and_display_isomers(molecule_name_input):
                 try:
                     mol_obj = Chem.MolFromSmiles(c.canonical_smiles)
                     if mol_obj:
+                        # 1. Check for disconnected fragments (should be a single molecule)
                         if len(Chem.GetMolFrags(mol_obj)) > 1:
                             print(f"    Main candidate CID {cid} is disconnected.")
                             is_standard_alkane_candidate = False
 
+                        # 2. Check for non-standard isotopes and atom types (must be C and H only, no isotopes)
                         if is_standard_alkane_candidate:
                             atom_symbols_main = set()
                             for atom in mol_obj.GetAtoms():
@@ -179,39 +172,43 @@ def find_and_display_isomers(molecule_name_input):
                                 print(f"    Main candidate CID {cid} is not CH only: {atom_symbols_main}")
                                 is_standard_alkane_candidate = False
 
+                        # 3. Check for single bonds only and no rings
                         if is_standard_alkane_candidate:
                             for bond in mol_obj.GetBonds():
                                 if bond.GetBondType() != Chem.BondType.SINGLE:
                                     print(f"    Main candidate CID {cid} has non-single bond: {bond.GetBondType()}")
                                     is_standard_alkane_candidate = False
                                     break
-                            if Chem.GetSymmSSSR(mol_obj):
+                            if Chem.GetSymmSSSR(mol_obj): # Smallest Set of Smallest Rings
                                 print(f"    Main candidate CID {cid} has rings.")
                                 is_standard_alkane_candidate = False
 
-                    else:
+                    else: # RDKit could not parse SMILES
                         print(f"    Main candidate CID {cid} SMILES '{c.canonical_smiles}' could not be parsed by RDKit.")
                         is_standard_alkane_candidate = False
                 except Exception as rdkit_ex:
                     print(f"    RDKit error processing SMILES for main candidate CID {cid}: {rdkit_ex}")
-                    is_standard_alkane_candidate = False
+                    is_standard_alkane_candidate = False 
             
-            if not is_standard_alkane_candidate:
+            # If not a standard alkane, skip to the next candidate
+            if not is_standard_alkane_candidate: 
                 continue
 
+            # Prioritize compounds whose synonyms match the input name
             current_compound_name_matches_input = molecule_name in [syn.lower() for syn in c.synonyms]
-            if current_compound_name_matches_input:
+            if current_compound_name_matches_input: 
                 main_compound_obj = c
                 molecular_formula = actual_formula
                 print(f"  SELECTED main compound based on name match: CID {main_compound_obj.cid}, Formula: {molecular_formula}")
-                break
+                break 
             
-            if not main_compound_obj:
-                main_compound_obj = c
-                molecular_formula = actual_formula
+            # If no direct name match, tentatively select the first valid alkane candidate
+            if not main_compound_obj: 
+                main_compound_obj = c 
+                molecular_formula = actual_formula 
                 print(f"  TENTATIVELY selected first valid alkane candidate: CID {main_compound_obj.cid}, Formula: {molecular_formula}")
         
-        if not main_compound_obj or not molecular_formula:
+        if not main_compound_obj or not molecular_formula: 
             status_message = f"Standard structural alkane with name '{molecule_name}' not found in PubChem. (This tool only searches for alkanes containing carbon and hydrogen, without rings, without double/triple bonds, and without isotopes.)"
             print(status_message)
             return empty_gallery, gr.update(value=status_message, visible=True), \
@@ -219,7 +216,7 @@ def find_and_display_isomers(molecule_name_input):
         
         print(f"Proceeding with main compound: CID {main_compound_obj.cid}, Formula: {molecular_formula}")
         print(f"Searching for isomers with formula: {molecular_formula} (up to 200 candidates)...")
-        isomers_found_raw = pcp.get_compounds(molecular_formula, 'formula', listkey_count=200)
+        isomers_found_raw = pcp.get_compounds(molecular_formula, 'formula', listkey_count=200) 
 
         if not isomers_found_raw:
             status_message = f"No isomer found for formula {molecular_formula}."
@@ -229,9 +226,9 @@ def find_and_display_isomers(molecule_name_input):
 
         print(f"Found {len(isomers_found_raw)} potential isomer entries from PubChem. Filtering for true structural alkane isomers...")
         
-        valid_structural_alkanes_entries = []
-        unique_accepted_smiles = set()
-        all_isomers_for_3d_data = []
+        valid_structural_alkanes_entries = [] 
+        unique_accepted_smiles = set() 
+        all_isomers_for_3d_data = [] # To store (name, smiles) for 3D dropdown
 
         for isomer_entry in isomers_found_raw:
             smiles = isomer_entry.canonical_smiles
@@ -241,39 +238,43 @@ def find_and_display_isomers(molecule_name_input):
 
             try:
                 mol_iso = Chem.MolFromSmiles(smiles)
-                if not mol_iso:
+                if not mol_iso: # RDKit failed to parse SMILES
                     print(f"  FILTERED (Invalid SMILES parse): CID {isomer_entry.cid}, SMILES: {smiles}")
                     continue
 
                 is_valid_alkane_isomer = True
                 
+                # 1. Check for disconnected fragments
                 if len(Chem.GetMolFrags(mol_iso)) > 1:
                     print(f"  FILTERED (Disconnected): CID {isomer_entry.cid}, NumFrags: {len(Chem.GetMolFrags(mol_iso))}, SMILES: {smiles}")
                     is_valid_alkane_isomer = False
                 
+                # 2. Check for C and H only (no other atoms, no isotopes)
                 if is_valid_alkane_isomer:
                     atom_symbols = set()
                     for atom in mol_iso.GetAtoms():
                         atom_symbols.add(atom.GetSymbol())
-                        if atom.GetIsotope() != 0:
+                        if atom.GetIsotope() != 0: # Check for isotopes
                             print(f"  FILTERED (Isotope present): CID {isomer_entry.cid}, Atom: {atom.GetSymbol()}{atom.GetIdx()+1}, Isotope: {atom.GetIsotope()}, SMILES: {smiles}")
                             is_valid_alkane_isomer = False
                             break
-                    if not atom_symbols.issubset({'C', 'H'}):
+                    if not atom_symbols.issubset({'C', 'H'}): # Check for non-C/H atoms
                         print(f"  FILTERED (Non-CH elements): CID {isomer_entry.cid}, Elements: {atom_symbols}, SMILES: {smiles}")
                         is_valid_alkane_isomer = False
                 
+                # 3. Check for single bonds only and no rings
                 if is_valid_alkane_isomer:
                     for bond in mol_iso.GetBonds():
                         if bond.GetBondType() != Chem.BondType.SINGLE:
                             print(f"  FILTERED (Non-single bond): CID {isomer_entry.cid}, BondType: {bond.GetBondType()}, SMILES: {smiles}")
                             is_valid_alkane_isomer = False
                             break
-                    if Chem.GetSymmSSSR(mol_iso):
+                    if Chem.GetSymmSSSR(mol_iso): # Check for rings
                         print(f"  FILTERED (Has rings): CID {isomer_entry.cid}, SMILES: {smiles}")
                         is_valid_alkane_isomer = False
 
                 if is_valid_alkane_isomer:
+                    # Use non-isomeric canonical SMILES for uniqueness to avoid stereo-isomers
                     canonical_smiles_for_uniqueness = Chem.MolToSmiles(mol_iso, isomericSmiles=False)
                     if canonical_smiles_for_uniqueness not in unique_accepted_smiles:
                         print(f"  ACCEPTED: CID {isomer_entry.cid}, SMILES: {smiles}")
@@ -288,31 +289,33 @@ def find_and_display_isomers(molecule_name_input):
         
         print(f"Found {len(valid_structural_alkanes_entries)} unique, valid structural alkane isomers after filtering.")
         
-        isomer_outputs_final_2d = []
+        isomer_outputs_final_2d = [] # For 2D gallery
         
         for final_isomer_entry in valid_structural_alkanes_entries:
             smiles_to_draw = final_isomer_entry.canonical_smiles
             
+            # Improved Naming Logic
             isomer_display_name = final_isomer_entry.iupac_name
             if not isomer_display_name and final_isomer_entry.synonyms:
+                # Prioritize simple alkane names (e.g., "Butane" over "n-Butane")
                 simple_alkane_names = [
                     s for s in final_isomer_entry.synonyms 
                     if s.lower().endswith("ane") and not any(char.isdigit() for char in s) and '-' not in s
                 ]
                 if simple_alkane_names:
-                    isomer_display_name = min(simple_alkane_names, key=len)
+                    isomer_display_name = min(simple_alkane_names, key=len) # Choose the shortest simple alkane name
                 else:
-                    isomer_display_name = final_isomer_entry.synonyms[0]
+                    isomer_display_name = final_isomer_entry.synonyms[0] # Fallback to the first synonym
             
-            if not isomer_display_name:
+            if not isomer_display_name: # Final fallback if no IUPAC or synonyms found
                 isomer_display_name = f"Alkane (CID: {final_isomer_entry.cid})"
             
-            isomer_display_name = isomer_display_name.capitalize()
+            isomer_display_name = isomer_display_name.capitalize() # Capitalize for consistent display
 
             mol_image = draw_molecule(smiles_to_draw)
             if mol_image:
                 isomer_outputs_final_2d.append((mol_image, f"{isomer_display_name}\nSMILES: {smiles_to_draw}"))
-                all_isomers_for_3d_data.append((isomer_display_name, smiles_to_draw))
+                all_isomers_for_3d_data.append((isomer_display_name, smiles_to_draw)) # Store for 3D
             else:
                 print(f"  Failed to draw image for accepted isomer: CID {final_isomer_entry.cid}, SMILES: {smiles_to_draw}")
 
@@ -332,10 +335,12 @@ def find_and_display_isomers(molecule_name_input):
             )
         
         isomer_outputs_final_2d.sort(key=lambda x: x[1])
-        all_isomers_for_3d_data.sort(key=lambda x: x[0])
+        all_isomers_for_3d_data.sort(key=lambda x: x[0]) # Sort 3D data by name too
         
+        # Prepare 3D dropdown choices
         dropdown_choices = [name for name, smiles in all_isomers_for_3d_data]
         
+        # Return all outputs, including the state and 3D dropdown updates
         return gr.update(value=isomer_outputs_final_2d, visible=True), \
                gr.update(value=status_message, visible=True), \
                all_isomers_for_3d_data, \
@@ -355,7 +360,8 @@ def find_and_display_isomers(molecule_name_input):
         return empty_gallery, gr.update(value=error_msg, visible=True), \
                empty_isomer_data_state, empty_3d_dropdown_choices, empty_3d_status_text, empty_3d_html_viewer
 
-with gr.Blocks() as demo:
+# --- Gradio Interface ---
+with gr.Blocks() as demo: # Theme argument removed as requested
     gr.Markdown("# Alkane Structural Isomer Finder and Viewer")
     gr.Markdown(
         "Enter an alkane name (in English) to display its structural isomers (containing only carbon and hydrogen, "
@@ -372,7 +378,9 @@ with gr.Blocks() as demo:
         )
         submit_btn = gr.Button("Search", scale=1)
 
-    isomer_data_state = gr.State(value=[])
+    # Hidden state component to store isomer data for 3D viewer.
+    # gr.State does not accept 'visible' argument as it's a non-visual component.
+    isomer_data_state = gr.State(value=[]) 
 
     with gr.Tabs() as tabs:
         with gr.TabItem("2D Isomers", id="tab_2d"):
@@ -387,6 +395,7 @@ with gr.Blocks() as demo:
 
         with gr.TabItem("3D Structure", id="tab_3d"):
             gr.Markdown("### Select Isomer for 3D Display")
+            # Dropdown for 3D selection, initially hidden and empty
             three_d_dropdown = gr.Dropdown(
                 label="Select Isomer", 
                 choices=[], 
@@ -394,28 +403,33 @@ with gr.Blocks() as demo:
                 visible=False,
                 info="Select the desired isomer from the list to view its 3D structure."
             )
+            # Textbox for 3D status (e.g., instructions or errors)
             three_d_status_text = gr.Textbox(label="3D Display Status", value="Please search for an alkane.", visible=True)
+            # HTML component for the 3D viewer
             three_d_viewer = gr.HTML(label="3D Viewer", visible=False, value="")
     
+    # Define how interactions trigger functions
     submit_btn.click(
         fn=find_and_display_isomers,
         inputs=molecule_input,
         outputs=[
             gallery_output, 
             status_textbox, 
-            isomer_data_state,
-            three_d_dropdown,
-            three_d_status_text,
-            three_d_viewer
+            isomer_data_state, # This output updates the hidden state
+            three_d_dropdown, # This output updates the dropdown choices
+            three_d_status_text, # Updates 3D tab status text
+            three_d_viewer # Clears/hides 3D viewer initially
         ]
     )
 
+    # When an isomer is selected from the 3D dropdown, trigger 3D rendering
     three_d_dropdown.change(
         fn=on_3d_dropdown_select,
-        inputs=[three_d_dropdown, isomer_data_state],
-        outputs=[three_d_status_text, three_d_viewer]
+        inputs=[three_d_dropdown, isomer_data_state], # Pass selected name and all isomer data
+        outputs=[three_d_status_text, three_d_viewer] # Update 3D status and viewer
     )
 
+    # Optional: Example inputs
     gr.Examples(
         examples=[
             ["butane"], 
