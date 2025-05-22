@@ -66,7 +66,7 @@ def find_and_display_isomers(molecule_name_input, selected_isomer=0):
     print(f"Processing request for: '{molecule_name}'")
     
     status_message = ""
-    isomer_data = []  # Store (SMILES, name) for dropdown
+    isomer_data = []  # Store (name, SMILES) for dropdown
 
     try:
         print(f"Searching for compound: '{molecule_name}' in PubChem (up to 10 candidates)...")
@@ -144,7 +144,7 @@ def find_and_display_isomers(molecule_name_input, selected_isomer=0):
         if not isomers_found_raw:
             status_message = f"ایزومری برای فرمول {molecular_formula} یافت نشد."
             print(status_message)
-            return gr.update(value=[], visible=True), gr.update(value=status_message, visible=True), gr.update(value="", visible(True)), gr.update(choices=[], visible=True), gr.update(value=0, visible=True)
+            return gr.update(value=[], visible=True), gr.update(value=status_message, visible=True), gr.update(value="", visible=True), gr.update(choices=[], visible=True), gr.update(value=0, visible=True)
 
         print(f"Found {len(isomers_found_raw)} potential isomer entries. Filtering for valid alkane isomers...")
         
