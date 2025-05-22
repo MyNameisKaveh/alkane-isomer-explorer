@@ -1,0 +1,7 @@
+pubchempy
+py3Dmol
+rdkit-pypi
+gradio
+Pillow
+numpy<2.0
+streamlit
