@@ -26,11 +26,12 @@ def draw_molecule(smiles_string):
 def generate_3d_view(smiles_string):
     """
     Generates a 3D visualization of a molecule from a SMILES string using py3Dmol.
+    Returns raw HTML for Gradio.
     """
     try:
         mol = Chem.MolFromSmiles(smiles_string)
         if not mol:
-            return "Error: Invalid SMILES string."
+            return "<div>Error: Invalid SMILES string.</div>"
         mol = Chem.AddHs(mol)  # Add hydrogens for proper 3D structure
         AllChem.EmbedMolecule(mol, randomSeed=42)  # Generate 3D coordinates
         AllChem.MMFFOptimizeMolecule(mol)  # Optimize geometry
@@ -42,16 +43,16 @@ def generate_3d_view(smiles_string):
         view.setBackgroundColor('white')
         view.zoomTo()
         
-        # Convert to HTML for Gradio
-        html = view.show()
+        # Generate raw HTML without requiring IPython
+        html = view._repr_html_()
         return f"""
-        <div style='width: 400px; height: 400px;'>
+        <div style='width: 400px; height: 400px; position: relative;'>
             {html}
         </div>
         """
     except Exception as e:
         print(f"Error generating 3D view for SMILES {smiles_string}: {e}")
-        return f"Error generating 3D view: {str(e)}"
+        return f"<div>Error generating 3D view: {str(e)}</div>"
 
 def find_and_display_isomers(molecule_name_input, selected_isomer_index=0, isomer_data_state=None):
     """
