@@ -1,11 +1,10 @@
+```python
+import streamlit as st
 import pubchempy as pcp
 from rdkit import Chem
 from rdkit.Chem import Draw, AllChem
-import gradio as gr
 import traceback
-import py3Dmol
-import io
-import base64
+from PIL import Image
 
 def draw_molecule(smiles_string):
     """
@@ -25,42 +24,31 @@ def draw_molecule(smiles_string):
 
 def generate_3d_view(smiles_string):
     """
-    Generates a 3D visualization of a molecule from a SMILES string using py3Dmol.
-    Returns raw HTML for Gradio.
+    Generates a static 3D visualization of a molecule from a SMILES string using RDKit.
+    Returns a PIL Image object for Streamlit.
     """
     try:
         mol = Chem.MolFromSmiles(smiles_string)
         if not mol:
-            return "<div>Error: Invalid SMILES string.</div>"
+            return None
         mol = Chem.AddHs(mol)  # Add hydrogens for proper 3D structure
         AllChem.EmbedMolecule(mol, randomSeed=42)  # Generate 3D coordinates
         AllChem.MMFFOptimizeMolecule(mol)  # Optimize geometry
-        xyz = Chem.MolToXYZBlock(mol)  # Convert to XYZ format
-
-        view = py3Dmol.view(width=400, height=400)
-        view.addModel(xyz, "xyz")
-        view.setStyle({'stick': {}})
-        view.setBackgroundColor('white')
-        view.zoomTo()
         
-        # Generate raw HTML without requiring IPython
-        html = view._repr_html_()
-        return f"""
-        <div style='width: 400px; height: 400px; position: relative;'>
-            {html}
-        </div>
-        """
+        # Generate a 3D image
+        img = Draw.MolToImage(mol, size=(400, 400), kekulize=False, use3D=True)
+        return img
     except Exception as e:
         print(f"Error generating 3D view for SMILES {smiles_string}: {e}")
-        return f"<div>Error generating 3D view: {str(e)}</div>"
+        return None
 
-def find_and_display_isomers(molecule_name_input, selected_isomer_index=0, isomer_data_state=None):
+def find_and_display_isomers(molecule_name_input):
     """
-    Finds and displays structural alkane isomers with 2D images and a single 3D viewer.
-    Returns gallery, status, 3D view HTML, dropdown choices, selected isomer index, and updated isomer_data_state.
+    Finds and displays structural alkane isomers with 2D images and prepares data for 3D view.
+    Returns isomer_outputs, status_message, isomer_data.
     """
     if not molecule_name_input or not molecule_name_input.strip():
-        return gr.update(value=[], visible=True), gr.update(value="لطفا نام یک مولکول را وارد کنید.", visible=True), gr.update(value="", visible=True), gr.update(choices=[], visible=True), gr.update(value=0, visible=True), gr.update(value=[])
+        return [], "لطفا نام یک مولکول را وارد کنید.", []
 
     molecule_name = molecule_name_input.strip().lower()
     print(f"Processing request for: '{molecule_name}'")
@@ -78,8 +66,8 @@ def find_and_display_isomers(molecule_name_input, selected_isomer_index=0, isome
         if not compounds:
             status_message = f"مولکول '{molecule_name}' در PubChem یافت نشد. لطفا املای آن را بررسی کنید."
             print(status_message)
-            return gr.update(value=[], visible=True), gr.update(value=status_message, visible=True), gr.update(value="", visible=True), gr.update(choices=[], visible=True), gr.update(value=0, visible=True), gr.update(value=[])
-        
+            return [], status_message, []
+
         print(f"Found {len(compounds)} potential matches for '{molecule_name}'. Checking them for standard alkane properties...")
         
         for i, c in enumerate(compounds):
@@ -136,7 +124,7 @@ def find_and_display_isomers(molecule_name_input, selected_isomer_index=0, isome
         if not main_compound_obj or not molecular_formula:
             status_message = f"آلکان ساختاری استاندارد با نام '{molecule_name}' یافت نشد."
             print(status_message)
-            return gr.update(value=[], visible=True), gr.update(value=status_message, visible=True), gr.update(value="", visible=True), gr.update(choices=[], visible=True), gr.update(value=0, visible=True), gr.update(value=[])
+            return [], status_message, []
         
         print(f"Searching for isomers with formula: {molecular_formula} (up to 200 candidates)...")
         isomers_found_raw = pcp.get_compounds(molecular_formula, 'formula', listkey_count=200)
@@ -144,7 +132,7 @@ def find_and_display_isomers(molecule_name_input, selected_isomer_index=0, isome
         if not isomers_found_raw:
             status_message = f"ایزومری برای فرمول {molecular_formula} یافت نشد."
             print(status_message)
-            return gr.update(value=[], visible=True), gr.update(value=status_message, visible=True), gr.update(value="", visible=True), gr.update(choices=[], visible=True), gr.update(value=0, visible=True), gr.update(value=[])
+            return [], status_message, []
 
         print(f"Found {len(isomers_found_raw)} potential isomer entries. Filtering for valid alkane isomers...")
         
@@ -225,7 +213,6 @@ def find_and_display_isomers(molecule_name_input, selected_isomer_index=0, isome
             status_message = "ایزومر ساختاری آلکان استاندارد و قابل رسمی پیدا نشد."
             if len(valid_structural_alkanes_entries) > 0:
                 status_message += " (برخی ایزومرها در رسم ناموفق بودند.)"
-            return gr.update(value=[], visible=True), gr.update(value=status_message, visible=True), gr.update(value="", visible=True), gr.update(choices=[], visible=True), gr.update(value=0, visible=True), gr.update(value=[])
         else:
             status_message = (
                 f"{len(isomer_outputs_final)} ایزومر ساختاری آلکان برای '{molecule_name_input}' "
@@ -235,104 +222,102 @@ def find_and_display_isomers(molecule_name_input, selected_isomer_index=0, isome
 
         isomer_outputs_final.sort(key=lambda x: x[1])
         isomer_data.sort(key=lambda x: x[0])
-        dropdown_choices = [name for name, _ in isomer_data]
-        
-        # Generate 3D view for the selected isomer
-        selected_index = min(selected_isomer_index, len(isomer_data) - 1) if isomer_data else 0
-        three_d_view = generate_3d_view(isomer_data[selected_index][1]) if isomer_data else ""
-
-        return (
-            gr.update(value=isomer_outputs_final, visible=True),
-            gr.update(value=status_message, visible=True),
-            gr.update(value=three_d_view, visible=True),
-            gr.update(choices=dropdown_choices, visible=True),
-            gr.update(value=selected_index, visible=True),
-            gr.update(value=isomer_data)
-        )
+        return isomer_outputs_final, status_message, isomer_data
 
     except pcp.PubChemHTTPError as e:
         error_msg = f"خطا در ارتباط با PubChem: {e}. لطفا اتصال اینترنت خود را بررسی کنید."
         print(f"FULL TRACEBACK: {traceback.format_exc()}")
-        return gr.update(value=[], visible=True), gr.update(value=error_msg, visible=True), gr.update(value="", visible=True), gr.update(choices=[], visible=True), gr.update(value=0, visible=True), gr.update(value=[])
+        return [], error_msg, []
     except Exception as e:
         error_msg = f"خطای غیرمنتظره: {e}"
         print(f"FULL TRACEBACK: {traceback.format_exc()}")
-        return gr.update(value=[], visible=True), gr.update(value=error_msg, visible=True), gr.update(value="", visible=True), gr.update(choices=[], visible=True), gr.update(value=0, visible=True), gr.update(value=[])
+        return [], error_msg, []
 
-def get_isomer_index(selected_name, isomer_data_state):
-    """
-    Maps selected isomer name to its index in isomer_data_state.
-    """
-    if not isomer_data_state or not selected_name:
-        return 0
-    for i, (name, _) in enumerate(isomer_data_state):
-        if name == selected_name:
-            return i
-    return 0
-
-# --- Gradio Interface ---
-with gr.Blocks(theme=gr.themes.Soft()) as iface:
-    gr.Markdown(
+# --- Streamlit Interface ---
+def main():
+    st.set_page_config(page_title="یابنده ایزومرهای آلکان", layout="wide")
+    
+    st.markdown(
         """
         # یابنده و نمایشگر ایزومرهای ساختاری آلکان
         نام یک آلکان (به انگلیسی) را وارد کنید تا ایزومرهای ساختاری آن (تنها شامل کربن و هیدروژن، بدون حلقه، بدون پیوند چندگانه، بدون ایزوتوپ) به همراه ساختار شیمیایی و نام IUPAC (یا رایج) نمایش داده شوند.  
-        اطلاعات از دیتابیس PubChem دریافت شده و ساختارها با استفاده از RDKit و py3Dmol رسم می‌شوند.
+        اطلاعات از دیتابیس PubChem دریافت شده و ساختارها با استفاده از RDKit رسم می‌شوند.
         """
     )
-    
-    molecule_input = gr.Textbox(
+
+    # Text input for molecule name
+    molecule_input = st.text_input(
         label="نام آلکان را وارد کنید",
         placeholder="مثال: butane, pentane, hexane",
-        info="نام آلکان را به انگلیسی و با حروف کوچک وارد کنید."
-    )
-    
-    with gr.Row():
-        with gr.Column():
-            gallery = gr.Gallery(
-                label="ایزومرهای یافت شده (2D)",
-                columns=[3],
-                height="auto",
-                object_fit="contain",
-                visible=False
-            )
-            status = gr.Textbox(label="وضعیت و پیام‌ها", visible=False)
-        with gr.Column():
-            three_d_viewer = gr.HTML(label="نمایش سه‌بعدی ایزومر", visible=False)
-            isomer_dropdown = gr.Dropdown(
-                label="انتخاب ایزومر برای نمایش سه‌بعدی",
-                choices=[],
-                value=None,
-                visible=False,
-                interactive=True
-            )
-    
-    submit_button = gr.Button("جستجوی ایزومرها")
-    
-    # States to track selected isomer index and isomer data
-    selected_isomer_state = gr.State(value=0)
-    isomer_data_state = gr.State(value=[])
-    
-    # Define interactions
-    submit_button.click(
-        fn=find_and_display_isomers,
-        inputs=[molecule_input, selected_isomer_state, isomer_data_state],
-        outputs=[gallery, status, three_d_viewer, isomer_dropdown, selected_isomer_state, isomer_data_state]
-    )
-    
-    isomer_dropdown.change(
-        fn=get_isomer_index,
-        inputs=[isomer_dropdown, isomer_data_state],
-        outputs=selected_isomer_state
-    ).then(
-        fn=find_and_display_isomers,
-        inputs=[molecule_input, selected_isomer_state, isomer_data_state],
-        outputs=[gallery, status, three_d_viewer, isomer_dropdown, selected_isomer_state, isomer_data_state]
+        help="نام آلکان را به انگلیسی و با حروف کوچک وارد کنید."
     )
 
-    gr.Examples(
-        examples=[["butane"], ["pentane"], ["hexane"], ["heptane"], ["octane"]],
-        inputs=[molecule_input]
-    )
+    # Initialize session state for isomers and status
+    if 'isomer_outputs' not in st.session_state:
+        st.session_state.isomer_outputs = []
+    if 'status_message' not in st.session_state:
+        st.session_state.status_message = ""
+    if 'isomer_data' not in st.session_state:
+        st.session_state.isomer_data = []
+    if 'selected_isomer' not in st.session_state:
+        st.session_state.selected_isomer = None
 
-if __name__ == '__main__':
-    iface.launch()
+    # Submit button
+    if st.button("جستجوی ایزومرها"):
+        with st.spinner("در حال جستجوی ایزومرها..."):
+            isomer_outputs, status_message, isomer_data = find_and_display_isomers(molecule_input)
+            st.session_state.isomer_outputs = isomer_outputs
+            st.session_state.status_message = status_message
+            st.session_state.isomer_data = isomer_data
+            st.session_state.selected_isomer = isomer_data[0][0] if isomer_data else None
+
+    # Display status message
+    if st.session_state.status_message:
+        st.text_area("وضعیت و پیام‌ها", st.session_state.status_message, height=100)
+
+    # Display 2D isomers in a grid
+    if st.session_state.isomer_outputs:
+        st.subheader("ایزومرهای یافت شده (2D)")
+        cols = st.columns(3)  # 3 columns for the gallery
+        for i, (img, caption) in enumerate(st.session_state.isomer_outputs):
+            with cols[i % 3]:
+                st.image(img, caption=caption, use_column_width=True)
+
+    # Display 3D viewer with dropdown
+    if st.session_state.isomer_data:
+        st.subheader("نمایش سه‌بعدی ایزومر")
+        selected_isomer = st.selectbox(
+            "انتخاب ایزومر برای نمایش سه‌بعدی",
+            options=[name for name, _ in st.session_state.isomer_data],
+            index=0 if st.session_state.selected_isomer is None else [name for name, _ in st.session_state.isomer_data].index(st.session_state.selected_isomer)
+        )
+        
+        # Update selected isomer in session state
+        st.session_state.selected_isomer = selected_isomer
+        
+        # Find the SMILES for the selected isomer
+        selected_smiles = next((smiles for name, smiles in st.session_state.isomer_data if name == selected_isomer), None)
+        if selected_smiles:
+            three_d_image = generate_3d_view(selected_smiles)
+            if three_d_image:
+                st.image(three_d_image, caption=f"نمایش سه‌بعدی: {selected_isomer}", use_column_width=False)
+            else:
+                st.error(f"خطا در تولید نمایش سه‌بعدی برای {selected_isomer}")
+
+    # Examples
+    st.markdown("### مثال‌ها")
+    examples = ["butane", "pentane", "hexane", "heptane", "octane"]
+    for example in examples:
+        if st.button(example.capitalize()):
+            molecule_input = example
+            with st.spinner("در حال جستجوی ایزومرها..."):
+                isomer_outputs, status_message, isomer_data = find_and_display_isomers(molecule_input)
+                st.session_state.isomer_outputs = isomer_outputs
+                st.session_state.status_message = status_message
+                st.session_state.isomer_data = isomer_data
+                st.session_state.selected_isomer = isomer_data[0][0] if isomer_data else None
+                st.experimental_rerun()
+
+if __name__ == "__main__":
+    main()
+```
