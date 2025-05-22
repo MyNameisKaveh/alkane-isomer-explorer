@@ -1,4 +1,4 @@
 pubchempy
 rdkit-pypi
-gradio==4.44.1  
-py3dmol
+gradio==4.44.1
+numpy==1.26.6
