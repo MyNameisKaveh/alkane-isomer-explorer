@@ -1,3 +1,4 @@
+```python
 import streamlit as st
 import pubchempy as pcp
 from rdkit import Chem
@@ -325,3 +326,4 @@ if __name__ == "__main__":
         subprocess.run(["streamlit", "run", "app.py"])
     else:
         main()
+```
