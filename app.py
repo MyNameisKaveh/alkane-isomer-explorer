@@ -1,7 +1,3 @@
-# قدم 1: اطمینان از نصب کتابخانه‌های مورد نیاز
-# این خطوط را نیازی نیست در app.py بگذارید، بلکه در فایل requirements.txt باید باشند.
-# pip install pubchempy rdkit-pypi gradio
-
 import pubchempy as pcp
 from rdkit import Chem
 from rdkit.Chem.Draw import MolToImage
@@ -26,21 +22,18 @@ def draw_molecule(smiles_string):
         print(f"Error drawing molecule for SMILES {smiles_string}: {e}")
         return None
 
-# --- تابع برای نمایش سه‌بعدی (اصلاح شده برای Gradio و خطای f-string و اجرای پایدارتر JS) ---
+# --- تابع برای نمایش سه‌بعدی (بهینه‌سازی شده برای Gradio 4.x) ---
 def get_3d_viewer_html(cid, style='stick'):
     """
-    ساختار سه‌بعدی یک مولکول را بر اساس CID آن از PubChem دریافت کرده و
-    HTML لازم برای فراخوانی تابع JavaScript رندرینگ 3D را برمی‌گرداند.
+    محتوای SDF را از PubChem می‌گیرد و یک JavaScript فراخوانی می‌کند تا مدل 3D را رندر کند.
     """
     if cid is None or cid == "" or cid == "N/A": 
-        # اضافه شدن clear HTML در اینجا
+        # مستقیم برگرداندن gr.HTML.update
         return gr.HTML.update(value="<p style='text-align: center; color: gray;'>برای نمایش ساختار سه‌بعدی، یک ایزومر را از لیست بالا انتخاب کنید.</p>")
 
-    # قبل از تلاش برای دانلود، نمایش یک پیام موقت
-    # این به کاربر بازخورد می‌دهد که عملیات در حال انجام است.
-    # به جای برگرداندن HTML خام، از gr.HTML.update استفاده می‌کنیم.
-    yield gr.HTML.update(value=f"<p style='text-align: center;'>در حال بارگذاری ساختار سه‌بعدی برای CID: {cid}...</p>")
-
+    # Gradio 4.x نیازی به yield برای به‌روزرسانی اولیه HTML ندارد
+    # و gr.HTML.update به صورت مستقیم باید برگردانده شود.
+    
     sdf_content = None
     temp_sdf_path = None
 
@@ -90,10 +83,10 @@ def get_3d_viewer_html(cid, style='stick'):
         if temp_sdf_path and os.path.exists(temp_sdf_path):
             os.remove(temp_sdf_path)
 
-# --- تابع اصلی find_and_display_isomers ---
+# --- تابع اصلی find_and_display_isomers (بدون تغییر زیاد) ---
 def find_and_display_isomers(molecule_name_input):
     if not molecule_name_input or not molecule_name_input.strip():
-        # در این بخش، خروجی initial_3d_html باید از جنس gr.update باشد
+        # این بخش‌ها باید gr.update برگردانند نه صرفاً رشته
         return [], gr.update(choices=[], value=None), gr.HTML.update(value="<p style='text-align: center; color: gray;'>نام یک آلکان را وارد کنید تا ایزومرها نمایش داده شوند.</p>"), "لطفا نام یک مولکول را وارد کنید."
 
     molecule_name = molecule_name_input.strip().lower()
@@ -298,9 +291,9 @@ def find_and_display_isomers(molecule_name_input):
             value=initial_3d_cid 
         )
 
-        # از `get_3d_viewer_html` برای تولید محتوای HTML اولیه استفاده می‌کنیم.
-        # این تابع اکنون به صورت یک `yield` یا `return` از `gr.HTML.update` استفاده می‌کند.
-        initial_3d_html_update = next(get_3d_viewer_html(initial_3d_cid, 'stick')) # باید مقداردهی اولیه را به این صورت انجام دهیم
+        # فراخوانی `get_3d_viewer_html` برای مقداردهی اولیه HTML
+        # چون `get_3d_viewer_html` حالا یک `gr.HTML.update` برمی‌گرداند، می‌توانیم مستقیماً از آن استفاده کنیم.
+        initial_3d_html_update = get_3d_viewer_html(initial_3d_cid, 'stick')
 
         return isomer_outputs_final_2d, dropdown_update, initial_3d_html_update, status_message
 
@@ -317,8 +310,6 @@ def find_and_display_isomers(molecule_name_input):
 # --- بخش Gradio Interface (با استفاده از gr.Blocks) ---
 
 with gr.Blocks(theme=gr.themes.Soft(), title="یابنده و نمایشگر ایزومرهای آلکان") as demo:
-    # این تگ HTML حاوی کتابخانه 3Dmol.js و تابع JavaScript اصلی رندرینگ است.
-    # این تابع `render3dmolInDiv` باید یک بار در ابتدای بارگذاری صفحه تعریف شود.
     gr.HTML("""
     <script src="https://3dmol.org/build/3Dmol-min.js"></script>
     <script type="text/javascript">
@@ -424,8 +415,6 @@ with gr.Blocks(theme=gr.themes.Soft(), title="یابنده و نمایشگر ا�
         show_progress=True
     )
 
-    # Note: For gr.HTML, if the function returns a generator (due to yield),
-    # Gradio handles it correctly. If it just returns gr.HTML.update, it also works.
     isomer_3d_selector.change(
         fn=get_3d_viewer_html,
         inputs=[isomer_3d_selector, style_3d_selector], 
