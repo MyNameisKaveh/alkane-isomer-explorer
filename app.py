@@ -22,18 +22,14 @@ def draw_molecule(smiles_string):
         print(f"Error drawing molecule for SMILES {smiles_string}: {e}")
         return None
 
-# --- تابع برای نمایش سه‌بعدی (بهینه‌سازی شده برای Gradio 4.x) ---
+# --- تابع برای نمایش سه‌بعدی (بدون تغییر) ---
 def get_3d_viewer_html(cid, style='stick'):
     """
     محتوای SDF را از PubChem می‌گیرد و یک JavaScript فراخوانی می‌کند تا مدل 3D را رندر کند.
     """
     if cid is None or cid == "" or cid == "N/A": 
-        # مستقیم برگرداندن gr.HTML.update
         return gr.HTML.update(value="<p style='text-align: center; color: gray;'>برای نمایش ساختار سه‌بعدی، یک ایزومر را از لیست بالا انتخاب کنید.</p>")
 
-    # Gradio 4.x نیازی به yield برای به‌روزرسانی اولیه HTML ندارد
-    # و gr.HTML.update به صورت مستقیم باید برگردانده شود.
-    
     sdf_content = None
     temp_sdf_path = None
 
@@ -83,10 +79,9 @@ def get_3d_viewer_html(cid, style='stick'):
         if temp_sdf_path and os.path.exists(temp_sdf_path):
             os.remove(temp_sdf_path)
 
-# --- تابع اصلی find_and_display_isomers (بدون تغییر زیاد) ---
+# --- تابع اصلی find_and_display_isomers ---
 def find_and_display_isomers(molecule_name_input):
     if not molecule_name_input or not molecule_name_input.strip():
-        # این بخش‌ها باید gr.update برگردانند نه صرفاً رشته
         return [], gr.update(choices=[], value=None), gr.HTML.update(value="<p style='text-align: center; color: gray;'>نام یک آلکان را وارد کنید تا ایزومرها نمایش داده شوند.</p>"), "لطفا نام یک مولکول را وارد کنید."
 
     molecule_name = molecule_name_input.strip().lower()
@@ -291,9 +286,7 @@ def find_and_display_isomers(molecule_name_input):
             value=initial_3d_cid 
         )
 
-        # فراخوانی `get_3d_viewer_html` برای مقداردهی اولیه HTML
-        # چون `get_3d_viewer_html` حالا یک `gr.HTML.update` برمی‌گرداند، می‌توانیم مستقیماً از آن استفاده کنیم.
-        initial_3d_html_update = get_3d_viewer_html(initial_3d_cid, 'stick')
+        initial_3d_html_update = get_3d_viewer_html(initial_3d_cid, 'stick') # فراخوانی تابع جدید
 
         return isomer_outputs_final_2d, dropdown_update, initial_3d_html_update, status_message
 
@@ -443,4 +436,4 @@ with gr.Blocks(theme=gr.themes.Soft(), title="یابنده و نمایشگر ا�
     )
 
 if __name__ == '__main__':
-    demo.launch()
+    demo.launch(share=True) # اضافه کردن share=True
