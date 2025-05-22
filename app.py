@@ -1,4 +1,5 @@
-# قدم 1: نصب کتابخانه‌های مورد نیاز (این خط را در ترمینال یا اولین سلول Google Colab اجرا کنید اگر هنوز نصب نشده‌اند)
+# قدم 1: اطمینان از نصب کتابخانه‌های مورد نیاز
+# این خطوط را نیازی نیست در app.py بگذارید، بلکه در فایل requirements.txt باید باشند.
 # pip install pubchempy rdkit-pypi gradio py3dmol
 
 import pubchempy as pcp
@@ -8,10 +9,13 @@ import gradio as gr
 import traceback
 import os 
 import tempfile 
-import uuid # برای تولید شناسه‌های یکتا
+import uuid # برای تولید شناسه‌های یکتا برای div های 3D viewer
 
 # --- تابع کمکی برای رسم مولکول 2D ---
 def draw_molecule(smiles_string):
+    """
+    مولکول را از SMILES رسم کرده و یک تصویر PIL Image برمی‌گرداند.
+    """
     try:
         mol = Chem.MolFromSmiles(smiles_string)
         if mol:
@@ -24,72 +28,87 @@ def draw_molecule(smiles_string):
         print(f"Error drawing molecule for SMILES {smiles_string}: {e}")
         return None
 
-# --- تابع جدید برای نمایش سه‌بعدی (بدون تغییر از نسخه قبلی که مشکل IPython را حل کرد) ---
+# --- تابع برای نمایش سه‌بعدی (اصلاح شده برای Gradio و خطای f-string) ---
 def get_3d_viewer_html(cid, style='stick'):
     """
-    ساختار سه‌بعدی یک مولکول را بر اساس CID آن از PubChem دریافت کرده و HTML نمایشگر py3Dmol را برمی‌گرداند.
-    این تابع اکنون HTML/JS را برای نمایش در gr.HTML تولید می‌کند.
+    ساختار سه‌بعدی یک مولکول را بر اساس CID آن از PubChem دریافت کرده و HTML نمایشگر 3Dmol.js را برمی‌گرداند.
+    این HTML شامل یک div و یک تگ script است که مدل 3D را در مرورگر کاربر بارگذاری می‌کند.
     """
-    if cid is None or cid == "" or cid == "N/A": # مدیریت حالت خالی یا None
+    if cid is None or cid == "" or cid == "N/A": 
         return "<p style='text-align: center; color: gray;'>برای نمایش ساختار سه‌بعدی، یک ایزومر را از لیست بالا انتخاب کنید.</p>"
 
     html_output = f"<p style='text-align: center;'>در حال بارگذاری ساختار سه‌بعدی برای CID: {cid}...</p>"
     sdf_content = None
-    temp_sdf_path = None
+    temp_sdf_path = None # مقداردهی اولیه برای اطمینان از پاک شدن فایل
 
     try:
+        # ایجاد یک فایل موقت برای ذخیره SDF
         with tempfile.NamedTemporaryFile(delete=False, suffix='.sdf') as temp_sdf_file:
             temp_sdf_path = temp_sdf_file.name
 
+        # دانلود فایل SDF از PubChem
         pcp.download('SDF', temp_sdf_path, cid, 'cid', record_type='3d', overwrite=True)
 
+        # خواندن محتوای فایل SDF
         with open(temp_sdf_path, 'r') as f:
             sdf_content = f.read()
 
         if not sdf_content:
             html_output = f"<p style='color: red; text-align: center;'>فایل 3D SDF برای CID {cid} خالی بود. ممکن است ساختار سه‌بعدی در دسترس نباشد.</p>"
         else:
-            # Escape newlines, backslashes, and single quotes for JavaScript string literal
-            js_sdf_content = sdf_content.replace('\\', '\\\\').replace('\n', '\\n').replace("'", "\\'")
+            # گام 1: Escape کردن کاراکترهای خاص برای JavaScript (newline, backslash, single quote)
+            # این کاراکترها اگر در رشته جاوااسکریپت (literal) استفاده شوند، باید escape شوند.
+            js_sdf_content_for_js_string = sdf_content.replace('\\', '\\\\').replace('\n', '\\n').replace("'", "\\'")
             
-            # Generate a unique ID for the div to ensure no conflicts on re-render
+            # گام 2: Escape کردن کاراکترهای '{' و '}' برای Python f-string
+            # اگر محتوای SDF شامل '{' یا '}' باشد (که می‌تواند باشد، مثلاً در PROPERTY block),
+            # و این محتوا داخل یک f-string پایتون قرار گیرد، مفسر f-string به مشکل می‌خورد.
+            # با تبدیل '{' به '{{' و '}' به '}}', این کاراکترها به صورت literal در f-string در نظر گرفته می‌شوند.
+            js_sdf_content_final = js_sdf_content_for_js_string.replace('{', '{{').replace('}', '}}')
+
+            # تولید یک ID یکتا برای div نمایشگر 3D. این برای اطمینان از عدم تداخل هنگام به‌روزرسانی مهم است.
             viewer_div_id = f"viewer_{uuid.uuid4().hex}" 
 
+            # ساخت HTML نهایی شامل div و کد JavaScript برای بارگذاری مدل 3D
             html_output = f"""
             <div id="{viewer_div_id}" style="height: 400px; width: 450px; margin: auto; border: 1px solid #ccc; border-radius: 5px;"></div>
             <script type="text/javascript">
+                // یک تابع خوداجرا برای جلوگیری از آلودگی global scope
                 (function() {{
                     var element = document.getElementById('{viewer_div_id}');
                     if (!element) {{
                         console.error('3D Viewer Error: Element not found for ID: {viewer_div_id}');
-                        return;
+                        return; // اگر عنصر div پیدا نشد، ادامه نده
                     }}
-                    element.innerHTML = ''; // Clear previous content
+                    element.innerHTML = ''; // پاک کردن محتوای قبلی div در صورت re-render
 
+                    // اطمینان از بارگذاری کتابخانه 3Dmol.js
                     if (typeof $3Dmol === 'undefined') {{
                         console.error('3D Viewer Error: $3Dmol library is not loaded. Ensure 3Dmol-min.js is included.');
-                        element.innerHTML = "<p style='color: red; text-align: center;'>خطا: کتابخانه 3Dmol بارگذاری نشده است. صفحه را رفرش کنید.</p>";
+                        element.innerHTML = "<p style='color: red; text-align: center;'>خطا: کتابخانه 3Dmol بارگذاری نشده است. لطفاً صفحه را رفرش کنید.</p>";
                         return;
                     }}
 
                     try {{
                         var viewer = $3Dmol.createViewer( element, {{defaultcolors: $3Dmol.elementColors.default}} );
-                        viewer.addModel('{js_sdf_content}', 'sdf');
+                        // اضافه کردن مدل با محتوای SDF Escape شده (برای جاوااسکریپت)
+                        viewer.addModel('{js_sdf_content_final}', 'sdf'); 
                         
-                        var style_dict = {{ "{style}": {{}} }};
-                        if ("{style}" === 'cartoon') {{
+                        // تنظیم استایل نمایش (stick, sphere, line)
+                        var style_dict = {{ "{style}": {{}} }}; 
+                        if ("{style}" === 'cartoon') {{ // تنظیمات خاص برای استایل 'cartoon'
                             style_dict['cartoon']['color'] = 'spectrum';
                         }}
                         viewer.setStyle(style_dict);
 
-                        viewer.setBackgroundColor('0xeeeeee');
-                        viewer.zoomTo();
-                        viewer.render();
+                        viewer.setBackgroundColor('0xeeeeee'); // رنگ پس‌زمینه
+                        viewer.zoomTo(); // زوم به اندازه مولکول
+                        viewer.render(); // رندر کردن مدل
                     }} catch (js_error) {{
                         console.error('3D Viewer JavaScript Error:', js_error);
                         element.innerHTML = "<p style='color: red; text-align: center;'>خطا در رندرینگ 3D: " + js_error.message + "</p>";
                     }}
-                })();
+                }})(); // پایان تابع خوداجرا
             </script>
             """
 
@@ -99,6 +118,7 @@ def get_3d_viewer_html(cid, style='stick'):
         html_output = f"<p style='color: red; text-align: center;'>خطا در نمایش ساختار 3D (پایتون): {e}</p>"
         print(f"FULL TRACEBACK for 3D rendering (Python): {traceback.format_exc()}")
     finally:
+        # پاک کردن فایل موقت SDF
         if temp_sdf_path and os.path.exists(temp_sdf_path):
             os.remove(temp_sdf_path)
             
@@ -106,6 +126,10 @@ def get_3d_viewer_html(cid, style='stick'):
 
 # --- تابع اصلی find_and_display_isomers (اکنون از gr.update() استفاده می‌کند) ---
 def find_and_display_isomers(molecule_name_input):
+    """
+    ایزومرهای آلکان را پیدا کرده، ساختارهای 2D را آماده می‌کند،
+    و داده‌ها را برای Dropdown و نمایش 3D بازمی‌گرداند.
+    """
     if not molecule_name_input or not molecule_name_input.strip():
         # بازگشت مقادیر پیش‌فرض با gr.update() برای تنظیم مجدد Dropdown
         return [], gr.update(choices=[], value=None), "<p style='text-align: center; color: gray;'>نام یک آلکان را وارد کنید تا ایزومرها نمایش داده شوند.</p>", "لطفا نام یک مولکول را وارد کنید."
@@ -127,7 +151,6 @@ def find_and_display_isomers(molecule_name_input):
         if not compounds:
             status_message = f"مولکول '{molecule_name}' در PubChem یافت نشد."
             print(status_message)
-            # بازگشت مقادیر پیش‌فرض با gr.update()
             return [], gr.update(choices=[], value=None), "<p style='text-align: center; color: red;'>مولکول یافت نشد.</p>", status_message
         
         print(f"Found {len(compounds)} potential matches for '{molecule_name}'. Checking them...")
@@ -191,7 +214,6 @@ def find_and_display_isomers(molecule_name_input):
         if not main_compound_obj or not molecular_formula: 
             status_message = f"آلکان استاندارد با نام '{molecule_name}' در PubChem یافت نشد."
             print(status_message)
-            # بازگشت مقادیر پیش‌فرض با gr.update()
             return [], gr.update(choices=[], value=None), "<p style='text-align: center; color: red;'>آلکان استاندارد یافت نشد.</p>", status_message
         
         print(f"Proceeding with main compound: CID {main_compound_obj.cid}, Formula: {molecular_formula}")
@@ -201,7 +223,6 @@ def find_and_display_isomers(molecule_name_input):
         if not isomers_found_raw:
             status_message = f"ایزومری برای فرمول {molecular_formula} یافت نشد."
             print(status_message)
-            # بازگشت مقادیر پیش‌فرض با gr.update()
             return [], gr.update(choices=[], value=None), "<p style='text-align: center; color: orange;'>ایزومری یافت نشد.</p>", status_message
 
         print(f"Found {len(isomers_found_raw)} potential isomer entries from PubChem. Filtering for true structural alkane isomers...")
@@ -301,7 +322,6 @@ def find_and_display_isomers(molecule_name_input):
             status_message = "ایزومر آلکان استاندارد و قابل رسمی پیدا نشد."
             if len(valid_structural_alkanes_entries) > 0:
                 status_message += " (برخی در مرحله رسم ناموفق بودند یا کاندیدای معتبری نبودند)."
-            # بازگشت مقادیر پیش‌فرض با gr.update()
             return [], gr.update(choices=[], value=None), "<p style='text-align: center; color: orange;'>ایزومرها یافت نشدند یا قابل رسم نبودند.</p>", status_message
         else:
             status_message = f"{len(isomer_outputs_final_2d)} ایزومر ساختاری آلکان برای '{molecule_name_input}' (فرمول: {molecular_formula}) پیدا و نمایش داده شد."
@@ -320,26 +340,24 @@ def find_and_display_isomers(molecule_name_input):
 
         initial_3d_html = get_3d_viewer_html(initial_3d_cid)
 
-        # ترتیب خروجی: گالری 2D، دراپ‌داون 3D (که شامل Choices و Value است)، HTML 3D، پیام وضعیت
+        # ترتیب خروجی‌ها باید با outputs در search_button.click و غیره مطابقت داشته باشد.
         return isomer_outputs_final_2d, dropdown_update, initial_3d_html, status_message
 
     except pcp.PubChemHTTPError as e:
         error_msg = f"خطا در ارتباط با PubChem: {e}."
         print(error_msg)
         print(f"FULL TRACEBACK for PubChemHTTPError: {traceback.format_exc()}")
-        # بازگشت مقادیر پیش‌فرض با gr.update()
         return [], gr.update(choices=[], value=None), f"<p style='text-align: center; color: red;'>خطا در PubChem: {e}</p>", error_msg
     except Exception as e:
         error_msg = f"یک خطای غیرمنتظره در سرور رخ داد: {e}"
         print(f"FULL TRACEBACK for general Exception: {traceback.format_exc()}")
-        # بازگشت مقادیر پیش‌فرض با gr.update()
         return [], gr.update(choices=[], value=None), f"<p style='text-align: center; color: red;'>خطای غیرمنتظره: {e}</p>", error_msg
 
 # --- بخش Gradio Interface (با استفاده از gr.Blocks) ---
 
 with gr.Blocks(theme=gr.themes.Soft(), title="یابنده و نمایشگر ایزومرهای آلکان") as demo:
     # این تگ script کتابخانه 3Dmol.js را یک بار در ابتدای بارگذاری صفحه، بارگذاری می‌کند
-    # این خط بسیار مهم است!
+    # این خط بسیار مهم است و کمک می‌کند 3Dmol در مرورگر اجرا شود.
     gr.HTML('<script src="https://3dmol.org/build/3Dmol-min.js"></script>')
 
     gr.Markdown(
@@ -384,11 +402,12 @@ with gr.Blocks(theme=gr.themes.Soft(), title="یابنده و نمایشگر ا�
                 )
             viewer_3d_html = gr.HTML(
                 value="<p style='text-align: center; color: gray;'>برای نمایش ساختار سه‌بعدی، یک ایزومر را از لیست بالا انتخاب کنید.</p>",
-                elem_id="py3dmol-viewer" 
+                elem_id="py3dmol-viewer" # یک ID برای CSS یا دسترسی JavaScript (اختیاری)
             )
     
     # --- مدیریت رویدادها ---
-    # ترتیب خروجی‌ها در اینجا باید دقیقاً با ترتیب return در find_and_display_isomers مطابقت داشته باشد.
+    # لیست کامپوننت‌های خروجی که تابع find_and_display_isomers آن‌ها را به‌روز می‌کند.
+    # ترتیب آن‌ها باید دقیقاً با ترتیب return در تابع find_and_display_isomers مطابقت داشته باشد.
     output_components = [
         gallery_2d_output,
         isomer_3d_selector, # این کامپوننت حالا یک gr.update() object دریافت می‌کند
@@ -403,6 +422,7 @@ with gr.Blocks(theme=gr.themes.Soft(), title="یابنده و نمایشگر ا�
         show_progress=True
     )
     
+    # می‌توان رویداد submit را نیز برای ورودی text_box تعریف کرد.
     molecule_name_input.submit(
         fn=find_and_display_isomers,
         inputs=[molecule_name_input],
@@ -410,19 +430,23 @@ with gr.Blocks(theme=gr.themes.Soft(), title="یابنده و نمایشگر ا�
         show_progress=True
     )
 
+    # رویداد تغییر انتخاب دراپ‌داون 3D یا تغییر استایل 3D
+    # وقتی ایزومر یا استایل تغییر می‌کند، get_3d_viewer_html با مقادیر جدید فراخوانی می‌شود
+    # و HTML نمایشگر 3D را به‌روز می‌کند.
     isomer_3d_selector.change(
         fn=get_3d_viewer_html,
-        inputs=[isomer_3d_selector, style_3d_selector], # هم CID و هم استایل رو می‌گیره
+        inputs=[isomer_3d_selector, style_3d_selector], # هم CID (از Dropdown) و هم استایل را می‌گیرد
         outputs=[viewer_3d_html],
         show_progress=True
     )
     style_3d_selector.change(
         fn=get_3d_viewer_html,
-        inputs=[isomer_3d_selector, style_3d_selector], # هم CID و هم استایل رو می‌گیره
+        inputs=[isomer_3d_selector, style_3d_selector], # هم CID (از Dropdown) و هم استایل را می‌گیرد
         outputs=[viewer_3d_html],
         show_progress=True
     )
 
+    # مثال‌ها برای راحتی کاربر
     gr.Examples(
         examples=[
             ["butane"], 
@@ -434,7 +458,7 @@ with gr.Blocks(theme=gr.themes.Soft(), title="یابنده و نمایشگر ا�
         outputs=output_components, # استفاده از لیست خروجی‌های یکسان
         fn=find_and_display_isomers,
         cache_examples=False,
-        run_on_click=True
+        run_on_click=True # اجرا شدن مثال‌ها با کلیک، نه به صورت خودکار
     )
 
 if __name__ == '__main__':
