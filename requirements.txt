@@ -1,5 +1,4 @@
-streamlit==1.39.0
 pubchempy
-rdkit
 rdkit-pypi
+gradio==3.50.2  
 py3dmol
