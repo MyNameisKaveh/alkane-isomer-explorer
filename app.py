@@ -452,7 +452,7 @@ if st.session_state.last_search_type == "alkane":
 
         if props_title in active_tabs and st.session_state.alkane_main_molecule_props and gallery_title not in active_tabs : # If props is a standalone tab
             with active_tabs[props_title]:
-                main_props_ standalone = st.session_state.alkane_main_molecule_props
+                main_props_standalone = st.session_state.alkane_main_molecule_props
                 main_mol_name_standalone = main_props_standalone.get("IUPAC Name", st.session_state.alkane_molecule_searched.capitalize())
                 st.subheader(f"Properties for Searched Alkane: {main_mol_name_standalone}")
                 display_properties(main_props_standalone)
