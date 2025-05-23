@@ -8,7 +8,7 @@ import traceback
 from PIL import Image
 from rdkit.Chem import rdDepictor
 
-# --- Helper Functions ---
+# --- Helper Functions (توابع کمکی مانند قبل، فقط process_alkane_request تغییر می‌کند) ---
 def draw_molecule_pil(smiles_string, size=(350, 300)):
     try:
         mol = Chem.MolFromSmiles(smiles_string)
@@ -51,22 +51,11 @@ def generate_3d_viewer_html(sdf_data, molecule_name, display_style='stick', widt
     try:
         viewer = py3Dmol.view(width=width, height=height)
         viewer.addModel(sdf_data, 'sdf')
-        
-        if display_style == 'stick':
-            viewer.setStyle({'stick': {}})
-        elif display_style == 'sphere': # CPK style
-            # پارامتر 'quality' را می‌توان برای بهبود ظاهر امتحان کرد، اما ممکن است همیشه تاثیر زیادی نداشته باشد
-            # مقادیر بالاتر کیفیت بهتر اما عملکرد کندتر را نتیجه می‌دهند.
-            # viewer.setStyle({'sphere': {'scale': 0.35, 'quality': 8}}) # مثال
-            viewer.setStyle({'sphere': {'scale': 0.35}})
-        elif display_style == 'line':
-            # افزایش ضخامت خط و استفاده از رنگ تیره‌تر
-            viewer.setStyle({'line': {'linewidth': 2.0, 'colorscheme': 'blackCarbon'}}) # 'colorscheme': 'blackCarbon' برای خطوط سیاه
-        elif display_style == 'ball_and_stick':
-            viewer.setStyle({'stick': {'radius': 0.08}, 'sphere': {'scale': 0.25}})
-        else: 
-            viewer.setStyle({'stick': {}})
-            
+        if display_style == 'stick': viewer.setStyle({'stick': {}})
+        elif display_style == 'sphere': viewer.setStyle({'sphere': {'scale': 0.35}})
+        elif display_style == 'line': viewer.setStyle({'line': {'linewidth': 2.0, 'colorscheme': 'blackCarbon'}})
+        elif display_style == 'ball_and_stick': viewer.setStyle({'stick': {'radius': 0.08}, 'sphere': {'scale': 0.25}})
+        else: viewer.setStyle({'stick': {}})
         viewer.setBackgroundColor('0xeeeeee')
         viewer.zoomTo()
         return viewer._make_html()
@@ -76,17 +65,45 @@ def generate_3d_viewer_html(sdf_data, molecule_name, display_style='stick', widt
             st.error(f"Error creating 3D viewer for {molecule_name} with style {display_style}: {e}")
         return error_msg_html
 
+def get_compound_properties(compound_obj):
+    """Extracts selected properties from a PubChemPy Compound object."""
+    if not compound_obj:
+        return None
+    properties = {
+        "IUPAC Name": getattr(compound_obj, 'iupac_name', 'N/A'),
+        "Molecular Formula": getattr(compound_obj, 'molecular_formula', 'N/A'),
+        "Molecular Weight": f"{getattr(compound_obj, 'molecular_weight', 'N/A')} g/mol",
+        "Canonical SMILES": getattr(compound_obj, 'canonical_smiles', 'N/A'),
+        "Isomeric SMILES": getattr(compound_obj, 'isomeric_smiles', 'N/A'),
+        "PubChem CID": getattr(compound_obj, 'cid', 'N/A'),
+        "Charge": getattr(compound_obj, 'charge', 'N/A'),
+        "Exact Mass": f"{getattr(compound_obj, 'exact_mass', 'N/A')} amu",
+        "Monoisotopic Mass": f"{getattr(compound_obj, 'monoisotopic_mass', 'N/A')} amu",
+        "TPSA": f"{getattr(compound_obj, 'tpsa', 'N/A')} Å²" if hasattr(compound_obj, 'tpsa') and compound_obj.tpsa is not None else 'N/A',
+        "XLogP": getattr(compound_obj, 'xlogp', 'N/A'),
+        "Heavy Atom Count": getattr(compound_obj, 'heavy_atom_count', 'N/A'),
+        "H-Bond Donor Count": getattr(compound_obj, 'hydrogen_bond_donor_count', 'N/A'),
+        "H-Bond Acceptor Count": getattr(compound_obj, 'hydrogen_bond_acceptor_count', 'N/A'),
+        "Rotatable Bond Count": getattr(compound_obj, 'rotatable_bond_count', 'N/A'),
+    }
+    # Filter out N/A values if desired, or keep them
+    # return {k: v for k, v in properties.items() if v != 'N/A'}
+    return properties
+
 def process_alkane_request(molecule_name_input):
     if not molecule_name_input or not molecule_name_input.strip():
-        return [], "Please enter a molecule name."
+        return [], "Please enter a molecule name.", None # Isomers, Status, Main Molecule Properties
     molecule_name = molecule_name_input.strip().lower()
     status_message, isomer_details_list = f"Searching for '{molecule_name}'...", []
+    main_molecule_properties = None
     try:
-        compounds = pcp.get_compounds(molecule_name, 'name', listkey_count=5)
+        compounds = pcp.get_compounds(molecule_name, 'name', listkey_count=5) # Get a few matches
         main_compound_obj, molecular_formula = None, None
-        if not compounds: return [], f"Molecule '{molecule_name}' not found on PubChem."
+        if not compounds: return [], f"Molecule '{molecule_name}' not found on PubChem.", None
         
-        for i, c in enumerate(compounds):
+        # Select the most relevant main compound (e.g., first exact match or first valid alkane)
+        for c in compounds:
+            # ... (منطق قبلی برای فیلتر کردن و انتخاب main_compound_obj) ...
             cid = c.cid
             actual_formula = c.molecular_formula if hasattr(c, 'molecular_formula') else None
             if actual_formula:
@@ -110,20 +127,25 @@ def process_alkane_request(molecule_name_input):
                     except Exception: is_standard_hydrocarbon = False 
                 else: is_standard_hydrocarbon = False 
                 if not is_standard_hydrocarbon: continue
-                current_compound_name_matches_input = molecule_name in [syn.lower() for syn in c.synonyms]
-                if current_compound_name_matches_input: 
+                # Prioritize exact name match if possible
+                if molecule_name in [syn.lower() for syn in c.synonyms]: 
                     main_compound_obj = c; molecular_formula = actual_formula; break
-                if not main_compound_obj: main_compound_obj = c; molecular_formula = actual_formula
+                if not main_compound_obj: # Tentatively select the first valid one
+                    main_compound_obj = c; molecular_formula = actual_formula
         
         if not main_compound_obj or not molecular_formula:
-            return [], f"Standard alkane '{molecule_name}' not found or does not meet criteria."
+            return [], f"Standard alkane '{molecule_name}' not found or does not meet criteria.", None
         
-        main_name = main_compound_obj.iupac_name or molecule_name
+        # Get properties of the main identified compound
+        main_molecule_properties = get_compound_properties(main_compound_obj)
+        
+        main_name = main_molecule_properties.get("IUPAC Name", molecule_name.capitalize()) if main_molecule_properties else molecule_name.capitalize()
         status_message = f"Finding isomers for {main_name} (Formula: {molecular_formula})..."
         isomers_found_raw = pcp.get_compounds(molecular_formula, 'formula', listkey_count=50)
-        if not isomers_found_raw: return [], f"No isomers found for formula {molecular_formula}."
+        if not isomers_found_raw: return [], f"No isomers found for formula {molecular_formula}.", main_molecule_properties
         
         valid_structural_alkanes_entries, unique_accepted_smiles = [], set()
+        # ... (منطق فیلتر کردن ایزومرها مانند قبل) ...
         for isomer_entry in isomers_found_raw:
             smiles = isomer_entry.canonical_smiles
             if not smiles: continue
@@ -150,7 +172,7 @@ def process_alkane_request(molecule_name_input):
             except Exception: continue
         
         if not valid_structural_alkanes_entries:
-             return [], f"No valid alkane isomers found for {molecular_formula} after filtering."
+             return [], f"No valid alkane isomers found for {molecular_formula} after filtering.", main_molecule_properties
         
         for entry in sorted(valid_structural_alkanes_entries, key=lambda x: (len(x.canonical_smiles), x.cid)):
             pil_image = draw_molecule_pil(entry.canonical_smiles)
@@ -165,9 +187,9 @@ def process_alkane_request(molecule_name_input):
         
         if isomer_details_list: status_message = f"{len(isomer_details_list)} isomers found for '{molecule_name}' ({molecular_formula})."
         else: status_message = f"No displayable isomers found for '{molecule_name}'."
-        return isomer_details_list, status_message
-    except pcp.PubChemHTTPError as e: return [], f"PubChem API Error: {e}"
-    except Exception as e: return [], f"An unexpected error occurred: {e}\n{traceback.format_exc()}"
+        return isomer_details_list, status_message, main_molecule_properties
+    except pcp.PubChemHTTPError as e: return [], f"PubChem API Error: {e}", None
+    except Exception as e: return [], f"An unexpected error occurred: {e}\n{traceback.format_exc()}", None
 
 # --- Streamlit UI ---
 st.set_page_config(page_title="Alkane Isomer Viewer", layout="wide", initial_sidebar_state="expanded")
@@ -175,6 +197,7 @@ st.title("Alkane Isomer Finder and Viewer")
 
 # Initialize session state
 if 'isomer_data' not in st.session_state: st.session_state.isomer_data = []
+if 'main_molecule_props' not in st.session_state: st.session_state.main_molecule_props = None # For main molecule properties
 if 'status_message' not in st.session_state: st.session_state.status_message = ""
 if 'selected_cid_for_3d' not in st.session_state: st.session_state.selected_cid_for_3d = None
 if 'selected_name_for_3d' not in st.session_state: st.session_state.selected_name_for_3d = ""
@@ -187,10 +210,8 @@ if 'run_search_after_example' not in st.session_state: st.session_state.run_sear
 # --- Sidebar ---
 st.sidebar.header("Search and Examples")
 current_molecule_input = st.sidebar.text_input(
-    label="Enter alkane name:",
-    value=st.session_state.molecule_name_input,
-    placeholder="e.g., butane, pentane",
-    key="sidebar_molecule_input",
+    label="Enter alkane name:", value=st.session_state.molecule_name_input,
+    placeholder="e.g., butane, pentane", key="sidebar_molecule_input",
     help="Enter the name of the alkane (e.g., hexane) in lowercase English."
 )
 if current_molecule_input != st.session_state.molecule_name_input:
@@ -203,63 +224,68 @@ cols_examples = st.sidebar.columns(len(example_alkanes) if len(example_alkanes) 
 for i, example in enumerate(example_alkanes):
     if cols_examples[i % len(cols_examples)].button(example.capitalize(), key=f"example_{example}"):
         st.session_state.molecule_name_input = example 
-        st.session_state.selected_cid_for_3d = None 
-        st.session_state.selected_name_for_3d = ""
-        st.session_state.current_3d_index = -1
+        st.session_state.selected_cid_for_3d, st.session_state.selected_name_for_3d, st.session_state.current_3d_index = None, "", -1
+        st.session_state.main_molecule_props = None # Clear old main molecule props
         st.session_state.run_search_after_example = True 
         st.rerun() 
 
 search_button_sidebar = st.sidebar.button("Search Isomers", type="primary", key="sidebar_search_button")
 
 should_run_search = False
-if search_button_sidebar and st.session_state.molecule_name_input:
-    should_run_search = True
+if search_button_sidebar and st.session_state.molecule_name_input: should_run_search = True
 elif st.session_state.run_search_after_example and st.session_state.molecule_name_input:
     should_run_search = True
     st.session_state.run_search_after_example = False 
 
 if should_run_search:
     with st.spinner(f"Processing for {st.session_state.molecule_name_input}..."):
-        isomers, status_msg = process_alkane_request(st.session_state.molecule_name_input)
+        isomers, status_msg, main_props = process_alkane_request(st.session_state.molecule_name_input)
         st.session_state.isomer_data = isomers
         st.session_state.status_message = status_msg
-        st.session_state.selected_cid_for_3d = None 
-        st.session_state.selected_name_for_3d = ""
-        st.session_state.current_3d_index = -1
+        st.session_state.main_molecule_props = main_props # Store main molecule properties
+        st.session_state.selected_cid_for_3d, st.session_state.selected_name_for_3d, st.session_state.current_3d_index = None, "", -1
         st.session_state.molecule_searched = st.session_state.molecule_name_input
 elif search_button_sidebar and not st.session_state.molecule_name_input: 
     st.session_state.status_message = "Please enter a molecule name or select an example."
-    st.session_state.isomer_data = [] 
-    st.session_state.selected_cid_for_3d = None
-    st.session_state.selected_name_for_3d = ""
-    st.session_state.current_3d_index = -1
+    st.session_state.isomer_data, st.session_state.main_molecule_props = [], None
+    st.session_state.selected_cid_for_3d, st.session_state.selected_name_for_3d, st.session_state.current_3d_index = None, "", -1
     st.session_state.molecule_searched = ""
 
 if st.session_state.status_message:
     if "Error" in st.session_state.status_message or "not found" in st.session_state.status_message or "empty" in st.session_state.status_message:
         st.sidebar.error(st.session_state.status_message)
-    else:
-        st.sidebar.info(st.session_state.status_message)
+    else: st.sidebar.info(st.session_state.status_message)
 
 # --- Main Page Tabs ---
-if st.session_state.isomer_data or st.session_state.selected_cid_for_3d :
+if st.session_state.isomer_data or st.session_state.selected_cid_for_3d or st.session_state.main_molecule_props :
     gallery_tab_title = f"Isomer Gallery ({len(st.session_state.isomer_data)} found)" if st.session_state.isomer_data else "Isomer Gallery"
     viewer_3d_tab_title = f"3D View: {st.session_state.selected_name_for_3d}" if st.session_state.selected_cid_for_3d and st.session_state.selected_name_for_3d else "3D View"
     
     tab_gallery, tab_3d_viewer = st.tabs([gallery_tab_title, viewer_3d_tab_title])
 
     with tab_gallery:
+        # Display Main Molecule Properties if available
+        if st.session_state.main_molecule_props:
+            props = st.session_state.main_molecule_props
+            main_mol_name = props.get("IUPAC Name", st.session_state.molecule_searched.capitalize())
+            with st.expander(f"Properties for Searched Molecule: {main_mol_name}", expanded=True):
+                # st.write(props) # نمایش خام دیکشنری
+                prop_cols = st.columns(2)
+                prop_list = list(props.items())
+                for i, (key, value) in enumerate(prop_list):
+                    if value != 'N/A' and value is not None: # فقط نمایش ویژگی‌های موجود
+                        prop_cols[i % 2].markdown(f"**{key}:** {value}")
+                st.markdown("---")
+
+
         if st.session_state.isomer_data:
             st.subheader(f"Isomers found for: {st.session_state.molecule_searched.capitalize()}")
-            # حذف st.number_input برای تعداد ستون‌ها
-            num_columns_gallery = 3 # تعداد ستون ثابت
+            num_columns_gallery = 3 
             gallery_cols = st.columns(num_columns_gallery)
             for i, isomer in enumerate(st.session_state.isomer_data):
                 with gallery_cols[i % num_columns_gallery]:
                     container = st.container(border=True) 
-                    container.image(isomer["image"], 
-                                    caption=f"{isomer['name']}", 
-                                    use_container_width=True) 
+                    container.image(isomer["image"], caption=f"{isomer['name']}", use_container_width=True) 
                     container.markdown(f"<small>SMILES: {isomer['smiles']}<br>CID: {isomer['cid']}</small>", unsafe_allow_html=True)
                     if container.button(f"View 3D", key=f"btn_3d_tab_{isomer['cid']}"):
                         st.session_state.selected_cid_for_3d = isomer['cid']
@@ -274,86 +300,41 @@ if st.session_state.isomer_data or st.session_state.selected_cid_for_3d :
     with tab_3d_viewer:
         if st.session_state.selected_cid_for_3d:
             st.subheader(f"3D Structure for: {st.session_state.selected_name_for_3d}")
-
-            # انتخابگر سبک نمایش با حذف 'Sphere (CPK)' اگر نامطلوب است
-            style_options_map = { 
-                'Stick': 'stick',
-                # 'Sphere (CPK)': 'sphere', # حذف شده یا برای تست نگه دارید
-                'Line': 'line',
-                'Ball and Stick': 'ball_and_stick'
-            }
+            style_options_map = {'Stick': 'stick', 'Line': 'line', 'Ball and Stick': 'ball_and_stick'}
             style_labels = list(style_options_map.keys())
-            
-            try: # پیدا کردن ایندکس سبک فعلی
+            try:
                 current_style_label = [k for k, v in style_options_map.items() if v == st.session_state.selected_3d_style][0]
                 current_style_index = style_labels.index(current_style_label)
             except IndexError: 
                 current_style_index = 0 
-                if style_labels: # اگر لیبل‌ها خالی نباشند
-                    st.session_state.selected_3d_style = style_options_map[style_labels[0]]
-                else: # اگر هیچ گزینه‌ای برای سبک وجود ندارد (نباید اتفاق بیفتد)
-                    st.session_state.selected_3d_style = 'stick'
-
-
-            selected_style_label = st.radio(
-                "Select Display Style:",
-                options=style_labels,
-                key="radio_3d_style",
-                horizontal=True,
-                index=current_style_index 
-            )
+                if style_labels: st.session_state.selected_3d_style = style_options_map[style_labels[0]]
+                else: st.session_state.selected_3d_style = 'stick'
+            selected_style_label = st.radio("Select Display Style:", options=style_labels, key="radio_3d_style", horizontal=True, index=current_style_index)
             if style_options_map.get(selected_style_label) != st.session_state.selected_3d_style:
                 st.session_state.selected_3d_style = style_options_map[selected_style_label]
                 st.rerun() 
-
-            nav_col_layout = [1, 0.1, 1.5, 0.1, 1] 
-            prev_col, _, clear_col, _, next_col = st.columns(nav_col_layout)
-            
+            nav_col_layout = [1, 0.1, 1.5, 0.1, 1]; prev_col, _, clear_col, _, next_col = st.columns(nav_col_layout)
             with prev_col:
-                if st.button("⬅️ Previous", key="prev_3d_icon", help="View Previous Isomer", use_container_width=True,
-                              disabled=(st.session_state.current_3d_index <= 0)):
-                    st.session_state.current_3d_index -= 1
-                    prev_isomer = st.session_state.isomer_data[st.session_state.current_3d_index]
-                    st.session_state.selected_cid_for_3d = prev_isomer['cid']
-                    st.session_state.selected_name_for_3d = prev_isomer['name']
-                    st.rerun()
-            
+                if st.button("⬅️ Previous", key="prev_3d_icon", help="View Previous Isomer", use_container_width=True, disabled=(st.session_state.current_3d_index <= 0)):
+                    st.session_state.current_3d_index -= 1; prev_isomer = st.session_state.isomer_data[st.session_state.current_3d_index]
+                    st.session_state.selected_cid_for_3d, st.session_state.selected_name_for_3d = prev_isomer['cid'], prev_isomer['name']; st.rerun()
             with clear_col:
                 if st.button("Clear 3D View", key="clear_3d_view_tab_main", use_container_width=True):
-                    st.session_state.selected_cid_for_3d = None
-                    st.session_state.selected_name_for_3d = ""
-                    st.session_state.current_3d_index = -1
-                    st.rerun()
-
+                    st.session_state.selected_cid_for_3d, st.session_state.selected_name_for_3d, st.session_state.current_3d_index = None, "", -1; st.rerun()
             with next_col:
-                if st.button("Next ➡️", key="next_3d_icon", help="View Next Isomer", use_container_width=True,
-                              disabled=(st.session_state.current_3d_index >= len(st.session_state.isomer_data) - 1)):
-                    st.session_state.current_3d_index += 1
-                    next_isomer = st.session_state.isomer_data[st.session_state.current_3d_index]
-                    st.session_state.selected_cid_for_3d = next_isomer['cid']
-                    st.session_state.selected_name_for_3d = next_isomer['name']
-                    st.rerun()
-            
+                if st.button("Next ➡️", key="next_3d_icon", help="View Next Isomer", use_container_width=True, disabled=(st.session_state.current_3d_index >= len(st.session_state.isomer_data) - 1)):
+                    st.session_state.current_3d_index += 1; next_isomer = st.session_state.isomer_data[st.session_state.current_3d_index]
+                    st.session_state.selected_cid_for_3d, st.session_state.selected_name_for_3d = next_isomer['cid'], next_isomer['name']; st.rerun()
             st.markdown("---") 
             with st.spinner(f"Loading 3D structure for {st.session_state.selected_name_for_3d} ({st.session_state.selected_3d_style} style)..."):
                 sdf_data, error = get_sdf_content(st.session_state.selected_cid_for_3d)
                 if sdf_data:
-                    html_3d = generate_3d_viewer_html(
-                        sdf_data, 
-                        st.session_state.selected_name_for_3d, 
-                        display_style=st.session_state.selected_3d_style,
-                        width=600, 
-                        height=450 
-                    )
+                    html_3d = generate_3d_viewer_html(sdf_data, st.session_state.selected_name_for_3d, display_style=st.session_state.selected_3d_style, width=600, height=450)
                     st.components.v1.html(html_3d, height=470, width=620, scrolling=False)
-            
-        else:
-            st.info("Select an isomer from the 'Isomer Gallery' tab to view its 3D structure.")
+        else: st.info("Select an isomer from the 'Isomer Gallery' tab to view its 3D structure.")
 else: 
-    if st.session_state.molecule_searched and not st.session_state.isomer_data:
-        pass 
-    else:
-        st.info("To begin, enter an alkane name in the sidebar and click 'Search Isomers', or select an example.")
+    if st.session_state.molecule_searched and not st.session_state.isomer_data: pass 
+    else: st.info("To begin, enter an alkane name in the sidebar and click 'Search Isomers', or select an example.")
 
 st.sidebar.markdown("---")
 st.sidebar.markdown("Built with Streamlit, RDKit, PubChemPy, and py3Dmol.")
