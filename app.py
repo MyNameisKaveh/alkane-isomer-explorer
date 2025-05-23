@@ -46,8 +46,7 @@ def get_sdf_content(cid):
         st.warning(error_message)
     return sdf_data, error_message
 
-def generate_3d_viewer_html(sdf_data, molecule_name, display_style='stick', component_width=600, component_height=600):
-    """Generates the HTML for the py3Dmol viewer with adjustments for centering."""
+def generate_3d_viewer_html(sdf_data, molecule_name, display_style='stick', component_width=600, component_height=450):
     if not sdf_data: return "<p style='color:orange; text-align:center;'>SDF data not available for 3D view.</p>"
     try:
         viewer = py3Dmol.view(width=component_width, height=component_height) 
@@ -55,14 +54,14 @@ def generate_3d_viewer_html(sdf_data, molecule_name, display_style='stick', comp
         
         if display_style == 'stick': viewer.setStyle({'stick': {}})
         elif display_style == 'sphere': viewer.setStyle({'sphere': {'scale': 0.35}}) 
-        elif display_style == 'line': viewer.setStyle({'line': {'linewidth': 2.0, 'colorscheme': 'blackCarbon'}})
+        elif display_style == 'line': viewer.setStyle({'line': {'linewidth': 1.5, 'colorscheme': 'blackCarbon'}})
         elif display_style == 'ball_and_stick': viewer.setStyle({'stick': {'radius': 0.08}, 'sphere': {'scale': 0.25}})
         else: viewer.setStyle({'stick': {}})
             
         viewer.setBackgroundColor('0xeeeeee')
         viewer.center() 
         viewer.zoomTo()
-        viewer.zoom(0.85) # Further zoom out
+        viewer.zoom(0.70) # Further zoom out
         return viewer._make_html()
     except Exception as e:
         error_msg_html = f"<p style='color:red; text-align:center;'>Error rendering 3D view for {molecule_name}: {str(e)}</p>"
@@ -93,7 +92,7 @@ def get_compound_properties(compound_obj):
     pubchem_link = f"https://pubchem.ncbi.nlm.nih.gov/compound/{compound_obj.cid}" if compound_obj.cid else None
     return properties, pubchem_link
 
-# ... (بقیه توابع process_alkane_request و process_general_molecule_search مانند قبل) ...
+# ... (توابع process_alkane_request و process_general_molecule_search مانند قبل هستند و نیازی به تغییر در اینجا ندارند) ...
 def process_alkane_request(molecule_name_input):
     if not molecule_name_input or not molecule_name_input.strip():
         return [], "Please enter a molecule name.", None 
@@ -120,8 +119,8 @@ def process_alkane_request(molecule_name_input):
                                 for atom in mol_obj.GetAtoms():
                                     if atom.GetIsotope() != 0: is_standard_hydrocarbon = False; break
                             if is_standard_hydrocarbon:
-                                for bond in mol_obj.GetBonds():
-                                    if bond.GetBondType() != Chem.BondType.SINGLE: is_standard_hydrocarbon = False; break
+                                for bond_val in mol_obj.GetBonds(): # Renamed variable 'bond'
+                                    if bond_val.GetBondType() != Chem.BondType.SINGLE: is_standard_hydrocarbon = False; break
                                 if Chem.GetSymmSSSR(mol_obj): is_standard_hydrocarbon = False
                         else: is_standard_hydrocarbon = False
                     except Exception: is_standard_hydrocarbon = False 
@@ -155,8 +154,8 @@ def process_alkane_request(molecule_name_input):
                         if atom.GetSymbol() == 'H' and atom.GetDegree() == 0: is_valid_candidate = False; break
                         if atom.GetIsotope() != 0: is_valid_candidate = False; break
                 if is_valid_candidate:
-                    for bond in mol_iso.GetBonds():
-                        if bond.GetBondType() != Chem.BondType.SINGLE: is_valid_candidate = False; break
+                    for bond_val_iso in mol_iso.GetBonds(): # Renamed variable 'bond'
+                        if bond_val_iso.GetBondType() != Chem.BondType.SINGLE: is_valid_candidate = False; break
                     if Chem.GetSymmSSSR(mol_iso): is_valid_candidate = False
                 if is_valid_candidate:
                     canonical_smiles_for_uniqueness = Chem.MolToSmiles(mol_iso, isomericSmiles=False)
@@ -204,13 +203,21 @@ def process_general_molecule_search(search_term):
     except Exception as e: return None, f"An unexpected error occurred during general search: {e}\n{traceback.format_exc()}"
 
 # --- Streamlit UI ---
-# ... (کد کامل بخش UI Streamlit از پاسخ قبلی که شامل اصلاح SyntaxError بود) ...
 st.set_page_config(page_title="Chemical Compound Explorer", layout="wide", initial_sidebar_state="expanded")
+# ... (بقیه کد UI که شامل اصلاح SyntaxError بود، از پاسخ قبلی کپی شود) ...
+# ... (این بخش طولانی است و برای جلوگیری از تکرار بیش از حد، اینجا خلاصه شده است) ...
+# ... (شامل مقداردهی اولیه session_state، سایدبار، منطق جستجو، و تعریف تب‌ها) ...
+
+# اطمینان حاصل کنید که تمام بخش UI از پاسخ قبلی (که SyntaxError در آن رفع شده بود) در اینجا قرار گیرد.
+# تنها تغییر مهم در تابع generate_3d_viewer_html خواهد بود.
+# برای کامل بودن، بخش UI را دوباره اینجا کپی می‌کنم با همان اصلاحات قبلی.
+
 st.title("Chemical Compound Explorer")
 
 if 'alkane_isomer_data' not in st.session_state: st.session_state.alkane_isomer_data = []
 if 'alkane_main_molecule_props_tuple' not in st.session_state: st.session_state.alkane_main_molecule_props_tuple = None
 if 'selected_isomer_cid_for_3d' not in st.session_state: st.session_state.selected_isomer_cid_for_3d = None
+# ... (بقیه مقداردهی‌های اولیه session_state)
 if 'selected_isomer_name_for_3d' not in st.session_state: st.session_state.selected_isomer_name_for_3d = ""
 if 'current_isomer_3d_index' not in st.session_state: st.session_state.current_isomer_3d_index = -1
 if 'alkane_molecule_searched' not in st.session_state: st.session_state.alkane_molecule_searched = ""
@@ -222,7 +229,9 @@ if 'status_message' not in st.session_state: st.session_state.status_message = "
 if 'selected_3d_style' not in st.session_state: st.session_state.selected_3d_style = 'stick' 
 if 'last_search_type' not in st.session_state: st.session_state.last_search_type = None
 
+
 st.sidebar.header("Search Options")
+# ... (کد کامل سایدبار)
 st.sidebar.subheader("1. Alkane Isomer Search")
 current_alkane_input = st.sidebar.text_input(label="Enter alkane name (for isomers):",value=st.session_state.alkane_name_input,placeholder="e.g., butane, pentane",key="sidebar_alkane_input",help="Finds structural isomers for standard alkanes.")
 if current_alkane_input != st.session_state.alkane_name_input:
@@ -231,17 +240,17 @@ if current_alkane_input != st.session_state.alkane_name_input:
 example_alkanes = ["butane", "pentane", "hexane"]
 st.sidebar.caption("Alkane Examples:")
 cols_examples_alkane = st.sidebar.columns(len(example_alkanes))
-for i, example in enumerate(example_alkanes):
-    if cols_examples_alkane[i].button(example.capitalize(), key=f"example_alkane_{example}", use_container_width=True):
-        st.session_state.alkane_name_input = example 
+for i_ex_alk, example_alk in enumerate(example_alkanes): # Renamed loop variables
+    if cols_examples_alkane[i_ex_alk].button(example_alk.capitalize(), key=f"example_alkane_{example_alk}", use_container_width=True):
+        st.session_state.alkane_name_input = example_alk 
         st.session_state.run_alkane_search_after_example = True 
         st.rerun() 
 if st.sidebar.button("Search Alkane Isomers", type="primary", key="search_alkane_button", use_container_width=True):
     if st.session_state.alkane_name_input:
         st.session_state.last_search_type = "alkane"
         with st.spinner(f"Searching isomers for {st.session_state.alkane_name_input}..."):
-            isomers, status_msg, main_props_tuple = process_alkane_request(st.session_state.alkane_name_input)
-            st.session_state.alkane_isomer_data, st.session_state.status_message, st.session_state.alkane_main_molecule_props_tuple = isomers, status_msg, main_props_tuple
+            isomers_res, status_msg_res, main_props_tuple_res = process_alkane_request(st.session_state.alkane_name_input) # Renamed variables
+            st.session_state.alkane_isomer_data, st.session_state.status_message, st.session_state.alkane_main_molecule_props_tuple = isomers_res, status_msg_res, main_props_tuple_res
             st.session_state.selected_isomer_cid_for_3d, st.session_state.selected_isomer_name_for_3d, st.session_state.current_isomer_3d_index = None, "", -1
             st.session_state.alkane_molecule_searched = st.session_state.alkane_name_input
             st.session_state.general_molecule_data_dict = None 
@@ -250,8 +259,8 @@ if st.session_state.run_alkane_search_after_example and st.session_state.alkane_
     st.session_state.last_search_type = "alkane"
     st.session_state.run_alkane_search_after_example = False 
     with st.spinner(f"Searching isomers for {st.session_state.alkane_name_input}..."):
-        isomers, status_msg, main_props_tuple = process_alkane_request(st.session_state.alkane_name_input)
-        st.session_state.alkane_isomer_data, st.session_state.status_message, st.session_state.alkane_main_molecule_props_tuple = isomers, status_msg, main_props_tuple
+        isomers_res_ex, status_msg_res_ex, main_props_tuple_res_ex = process_alkane_request(st.session_state.alkane_name_input) # Renamed
+        st.session_state.alkane_isomer_data, st.session_state.status_message, st.session_state.alkane_main_molecule_props_tuple = isomers_res_ex, status_msg_res_ex, main_props_tuple_res_ex
         st.session_state.selected_isomer_cid_for_3d, st.session_state.selected_isomer_name_for_3d, st.session_state.current_isomer_3d_index = None, "", -1
         st.session_state.alkane_molecule_searched = st.session_state.alkane_name_input
         st.session_state.general_molecule_data_dict = None 
@@ -265,8 +274,8 @@ if st.sidebar.button("Search Molecule Info", type="primary", key="search_general
     if st.session_state.general_molecule_name_input:
         st.session_state.last_search_type = "general"
         with st.spinner(f"Searching for {st.session_state.general_molecule_name_input}..."):
-            mol_data, status_msg = process_general_molecule_search(st.session_state.general_molecule_name_input)
-            st.session_state.general_molecule_data_dict, st.session_state.status_message = mol_data, status_msg
+            mol_data_res, status_msg_g_res = process_general_molecule_search(st.session_state.general_molecule_name_input) # Renamed
+            st.session_state.general_molecule_data_dict, st.session_state.status_message = mol_data_res, status_msg_g_res
             st.session_state.alkane_isomer_data, st.session_state.alkane_main_molecule_props_tuple = [], None
             st.session_state.selected_isomer_cid_for_3d, st.session_state.selected_isomer_name_for_3d, st.session_state.current_isomer_3d_index = None, "", -1
     else: st.session_state.status_message = "Please enter a chemical name for general search."
@@ -275,24 +284,26 @@ if st.session_state.status_message:
     if is_error: st.sidebar.error(st.session_state.status_message)
     else: st.sidebar.info(st.session_state.status_message)
 
+# --- Main Page Tabs (کد نمایش تب‌ها و محتوای آن‌ها مانند قبل، با اصلاح SyntaxError) ---
+# ... (کپی کامل بخش Main Page Tabs از پاسخ قبلی که SyntaxError در آن رفع شده بود) ...
 gallery_title, props_title, view2d_title, view3d_title = "Isomer Gallery", "Properties", "2D Structure", "3D View"
 tab_objects = [] 
 if st.session_state.last_search_type == "alkane":
     main_props_dict_tuple = st.session_state.alkane_main_molecule_props_tuple if st.session_state.alkane_main_molecule_props_tuple else (None, None)
-    main_props_dict, _ = main_props_dict_tuple
+    main_props_dict_alk, _ = main_props_dict_tuple # Renamed
     if st.session_state.alkane_isomer_data: gallery_title = f"Alkane Isomers ({len(st.session_state.alkane_isomer_data)})"
-    if main_props_dict: props_title = f"Alkane: {main_props_dict.get('IUPAC Name', st.session_state.alkane_molecule_searched.capitalize())[:20]}"
+    if main_props_dict_alk: props_title = f"Alkane: {main_props_dict_alk.get('IUPAC Name', st.session_state.alkane_molecule_searched.capitalize())[:20]}"
     if st.session_state.selected_isomer_cid_for_3d: view3d_title = f"Isomer 3D: {st.session_state.selected_isomer_name_for_3d[:20]}"
-    if st.session_state.alkane_isomer_data or main_props_dict or st.session_state.selected_isomer_cid_for_3d:
+    if st.session_state.alkane_isomer_data or main_props_dict_alk or st.session_state.selected_isomer_cid_for_3d:
         tab_objects = st.tabs([gallery_title, props_title, view3d_title])
     else: 
         if st.session_state.alkane_molecule_searched: st.info(f"No results found for '{st.session_state.alkane_molecule_searched}'. Try another search.")
         else: st.info("Use the sidebar to search for an alkane or a general chemical compound.")
 elif st.session_state.last_search_type == "general" and st.session_state.general_molecule_data_dict:
-    g_data = st.session_state.general_molecule_data_dict
-    props_title = f"Properties: {g_data['name'][:20]}"
-    view2d_title = f"2D: {g_data['name'][:20]}" if g_data.get("image_2d") else None
-    view3d_title = f"3D: {g_data['name'][:20]}"
+    g_data_dict = st.session_state.general_molecule_data_dict # Renamed
+    props_title = f"Properties: {g_data_dict['name'][:20]}"
+    view2d_title = f"2D: {g_data_dict['name'][:20]}" if g_data_dict.get("image_2d") else None
+    view3d_title = f"3D: {g_data_dict['name'][:20]}"
     tabs_to_create = [props_title]; 
     if view2d_title: tabs_to_create.append(view2d_title)
     tabs_to_create.append(view3d_title)
@@ -306,30 +317,26 @@ if st.session_state.last_search_type == "alkane" and tab_objects and len(tab_obj
             st.subheader(f"Isomers found for: {st.session_state.alkane_molecule_searched.capitalize()}")
             num_columns_gallery = 3
             gallery_cols = st.columns(num_columns_gallery)
-            for i, isomer in enumerate(st.session_state.alkane_isomer_data):
-                with gallery_cols[i % num_columns_gallery]:
+            for i_iso, isomer_item in enumerate(st.session_state.alkane_isomer_data): # Renamed
+                with gallery_cols[i_iso % num_columns_gallery]:
                     container = st.container(border=True) 
-                    container.image(isomer["image"], caption=f"{isomer['name']}", use_container_width=True) 
-                    container.markdown(f"<small>SMILES: {isomer['smiles']}<br>CID: {isomer['cid']}</small>", unsafe_allow_html=True)
-                    if container.button(f"View 3D", key=f"btn_3d_isomer_{isomer['cid']}"):
-                        st.session_state.selected_isomer_cid_for_3d, st.session_state.selected_isomer_name_for_3d, st.session_state.current_isomer_3d_index = isomer['cid'], isomer['name'], i; st.rerun()
+                    container.image(isomer_item["image"], caption=f"{isomer_item['name']}", use_container_width=True) 
+                    container.markdown(f"<small>SMILES: {isomer_item['smiles']}<br>CID: {isomer_item['cid']}</small>", unsafe_allow_html=True)
+                    if container.button(f"View 3D", key=f"btn_3d_isomer_{isomer_item['cid']}"):
+                        st.session_state.selected_isomer_cid_for_3d, st.session_state.selected_isomer_name_for_3d, st.session_state.current_isomer_3d_index = isomer_item['cid'], isomer_item['name'], i_iso; st.rerun()
     if st.session_state.alkane_main_molecule_props_tuple:
-      main_props_dict, main_pubchem_link = st.session_state.alkane_main_molecule_props_tuple
-      if tab_main_props and main_props_dict:
+      main_props_dict_tuple_val, main_pubchem_link_val = st.session_state.alkane_main_molecule_props_tuple # Renamed
+      if tab_main_props and main_props_dict_tuple_val:
           with tab_main_props:
-              main_mol_name = main_props_dict.get("IUPAC Name", st.session_state.alkane_molecule_searched.capitalize())
-              st.subheader(f"Properties for Searched Alkane: {main_mol_name}")
-              if main_pubchem_link:
-                  st.markdown(f"**View on PubChem:** [{main_mol_name}]({main_pubchem_link})", unsafe_allow_html=True)
+              main_mol_name_val = main_props_dict_tuple_val.get("IUPAC Name", st.session_state.alkane_molecule_searched.capitalize()) # Renamed
+              st.subheader(f"Properties for Searched Alkane: {main_mol_name_val}")
+              if main_pubchem_link_val:
+                  st.markdown(f"**View on PubChem:** [{main_mol_name_val}]({main_pubchem_link_val})", unsafe_allow_html=True)
                   st.markdown("---")
               prop_cols = st.columns(2)
-              prop_list = list(main_props_dict.items())
-              for i_prop, (key_prop, value_prop) in enumerate(prop_list): # Renamed loop variables
-                  if value_prop != 'N/A' and value_prop is not None: 
-                      if key_prop == "Synonyms" and isinstance(value_prop, str) and len(value_prop) > 100:
-                          prop_cols[i_prop % 2].markdown(f"**{key_prop}:** {value_prop[:100]}...")
-                      else:
-                          prop_cols[i_prop % 2].markdown(f"**{key_prop}:** {value_prop}")
+              prop_list_val = list(main_props_dict_tuple_val.items()) # Renamed
+              for i_prop, (key_prop, value_prop) in enumerate(prop_list_val):
+                  if value_prop != 'N/A' and value_prop is not None: prop_cols[i_prop % 2].markdown(f"**{key_prop}:** {value_prop}")
               st.markdown("---")
     if tab_3d_isomer: 
         with tab_3d_isomer:
@@ -338,7 +345,7 @@ if st.session_state.last_search_type == "alkane" and tab_objects and len(tab_obj
                 style_options_map = {'Stick': 'stick', 'Line': 'line', 'Ball and Stick': 'ball_and_stick'}
                 style_labels = list(style_options_map.keys())
                 try: 
-                    current_style_label = [k_style for k_style, v_style in style_options_map.items() if v_style == st.session_state.selected_3d_style][0] # Renamed loop variables
+                    current_style_label = [k_style for k_style, v_style in style_options_map.items() if v_style == st.session_state.selected_3d_style][0]
                     current_style_index = style_labels.index(current_style_label)
                 except IndexError: 
                     current_style_index = 0 
@@ -372,43 +379,41 @@ if st.session_state.last_search_type == "alkane" and tab_objects and len(tab_obj
                      st.info("No isomers were found for the searched alkane to display in 3D.")
 
 if st.session_state.last_search_type == "general" and st.session_state.general_molecule_data_dict and tab_objects:
-    g_data = st.session_state.general_molecule_data_dict
+    g_data_dict_val = st.session_state.general_molecule_data_dict # Renamed
     num_general_tabs_created = len(tab_objects)
     props_tab_index = 0
-    view2d_tab_index = 1 if g_data.get("image_2d") and num_general_tabs_created > (props_tab_index + 1) else -1
+    view2d_tab_index = 1 if g_data_dict_val.get("image_2d") and num_general_tabs_created > (props_tab_index + 1) else -1
     view3d_tab_index = (view2d_tab_index + 1) if view2d_tab_index != -1 and num_general_tabs_created > view2d_tab_index else (props_tab_index + 1)
-    
     if num_general_tabs_created > props_tab_index :
         with tab_objects[props_tab_index]:
-            st.subheader(f"Properties for: {g_data['name']}")
-            if g_data["properties_dict"]:
-                props_dict = g_data["properties_dict"]
-                if g_data.get("pubchem_link"):
-                    st.markdown(f"**View on PubChem:** [{g_data['name']}]({g_data['pubchem_link']})", unsafe_allow_html=True)
+            st.subheader(f"Properties for: {g_data_dict_val['name']}")
+            if g_data_dict_val["properties_dict"]:
+                props_dict_g = g_data_dict_val["properties_dict"] # Renamed
+                if g_data_dict_val.get("pubchem_link"):
+                    st.markdown(f"**View on PubChem:** [{g_data_dict_val['name']}]({g_data_dict_val['pubchem_link']})", unsafe_allow_html=True)
                     st.markdown("---")
                 prop_cols = st.columns(2)
-                prop_list = list(props_dict.items())
-                for i_prop_g, (key_prop_g, value_prop_g) in enumerate(prop_list): # Renamed loop variables
+                prop_list_g = list(props_dict_g.items()) # Renamed
+                for i_prop_g, (key_prop_g, value_prop_g) in enumerate(prop_list_g):
                     if value_prop_g != 'N/A' and value_prop_g is not None: 
                         if key_prop_g == "Synonyms" and isinstance(value_prop_g, str) and len(value_prop_g) > 100:
                             prop_cols[i_prop_g % 2].markdown(f"**{key_prop_g}:** {value_prop_g[:100]}...")
-                        else:
-                            prop_cols[i_prop_g % 2].markdown(f"**{key_prop_g}:** {value_prop_g}")
+                        else: prop_cols[i_prop_g % 2].markdown(f"**{key_prop_g}:** {value_prop_g}")
             else: st.info("No detailed properties found.")
             st.markdown("---")
     if view2d_tab_index != -1 and num_general_tabs_created > view2d_tab_index : 
         with tab_objects[view2d_tab_index]:
-            if g_data.get("image_2d"):
-                st.subheader(f"2D Structure for: {g_data['name']}")
-                st.image(g_data["image_2d"], use_container_width=True)
+            if g_data_dict_val.get("image_2d"):
+                st.subheader(f"2D Structure for: {g_data_dict_val['name']}")
+                st.image(g_data_dict_val["image_2d"], use_container_width=True)
             else: st.info("2D image not available for this compound.")
     if num_general_tabs_created > view3d_tab_index:
         with tab_objects[view3d_tab_index]:
-            st.subheader(f"3D Structure for: {g_data['name']}")
+            st.subheader(f"3D Structure for: {g_data_dict_val['name']}")
             style_options_map_g = {'Stick': 'stick', 'Line': 'line', 'Ball and Stick': 'ball_and_stick'}
             style_labels_g = list(style_options_map_g.keys())
             try: 
-                current_style_label_g = [k_style_g for k_style_g, v_style_g in style_options_map_g.items() if v_style_g == st.session_state.selected_3d_style][0] # Renamed
+                current_style_label_g = [k_style_g for k_style_g, v_style_g in style_options_map_g.items() if v_style_g == st.session_state.selected_3d_style][0]
                 current_style_index_g = style_labels_g.index(current_style_label_g)
             except IndexError: 
                 current_style_index_g = 0 
@@ -418,12 +423,12 @@ if st.session_state.last_search_type == "general" and st.session_state.general_m
             if style_options_map_g.get(selected_style_label_g) != st.session_state.selected_3d_style:
                 st.session_state.selected_3d_style = style_options_map_g[selected_style_label_g]; st.rerun() 
             st.markdown("---")
-            with st.spinner(f"Loading 3D structure for {g_data['name']}..."):
-                sdf_data, error = get_sdf_content(g_data['cid'])
-                if sdf_data:
-                    html_3d = generate_3d_viewer_html(sdf_data, g_data['name'], display_style=st.session_state.selected_3d_style, component_width=600, component_height=450)
-                    st.components.v1.html(html_3d, height=470, width=600, scrolling=False)
-                else: st.info(f"3D structure could not be loaded. {error if error else ''}")
+            with st.spinner(f"Loading 3D structure for {g_data_dict_val['name']}..."):
+                sdf_data_g, error_g = get_sdf_content(g_data_dict_val['cid']) # Renamed
+                if sdf_data_g:
+                    html_3d_g = generate_3d_viewer_html(sdf_data_g, g_data_dict_val['name'], display_style=st.session_state.selected_3d_style, component_width=600, component_height=450) # Renamed
+                    st.components.v1.html(html_3d_g, height=470, width=600, scrolling=False)
+                else: st.info(f"3D structure could not be loaded. {error_g if error_g else ''}")
 
 st.sidebar.markdown("---")
 st.sidebar.markdown("Built with Streamlit, RDKit, PubChemPy, and py3Dmol.")
