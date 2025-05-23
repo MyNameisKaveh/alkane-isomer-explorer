@@ -1,43 +1,46 @@
 import streamlit as st
 import pubchempy as pcp
 from rdkit import Chem
-from rdkit.Chem.Draw import MolToImage
+from rdkit.Chem.Draw import MolToImage # دیگر برای 2D اصلی استفاده نمی‌شود، اما شاید برای موارد دیگر لازم باشد
+from rdkit.Chem import rdDepictor
+from rdkit.Chem.Draw import rdMolDraw2D # برای رسم SVG
 import py3Dmol
 import os
 import traceback
-from PIL import Image
-# برای بهبود کیفیت رسم 2D (اختیاری)
-from rdkit.Chem import rdDepictor
-from rdkit.Chem.Draw import rdMolDraw2D
+# from PIL import Image # دیگر برای تصاویر 2D لازم نیست
 
 # --- توابع کمکی ---
-def draw_molecule_pil(smiles_string, size=(350, 300)): # افزایش اندازه و تغییر نسبت برای نمایش بهتر
+
+def draw_molecule_svg(smiles_string, width=250, height=200): # اندازه‌ها را می‌توان تنظیم کرد
+    """یک مولکول را از رشته SMILES به صورت SVG با RDKit رسم می‌کند."""
     try:
         mol = Chem.MolFromSmiles(smiles_string)
-        if mol:
-            # تولید مختصات 2D برای رسم بهتر
-            rdDepictor.Compute2DCoords(mol)
-            
-            # برای کیفیت بهتر، می‌توان از MolDraw2DCairo و سپس تبدیل به PIL استفاده کرد
-            # اما MolToImage برای سادگی معمولاً کافی است اگر size مناسب باشد.
-            # drawer = rdMolDraw2D.MolDraw2DCairo(size[0], size[1])
-            # drawer.drawOptions(). हाथbondLineWidth = 2 # مثال برای افزایش ضخامت خط
-            # drawer.DrawMolecule(mol)
-            # drawer.FinishDrawing()
-            # img_bytes = drawer.GetDrawingText() # این PNG bytes است
-            # from io import BytesIO
-            # img = Image.open(BytesIO(img_bytes))
-
-            img = MolToImage(mol, size=size) # استفاده از MolToImage با اندازه بزرگتر
-            return img
-        else:
+        if not mol:
+            print(f"خطا در پارس کردن SMILES برای SVG: {smiles_string}")
             return None
+
+        # تولید مختصات 2D برای رسم بهتر
+        rdDepictor.Compute2DCoords(mol)
+        
+        # ایجاد drawer SVG
+        drawer = rdMolDraw2D.MolDraw2DSVG(width, height)
+        
+        # گزینه‌های رسم (اختیاری، برای سفارشی‌سازی بیشتر)
+        # drawer.drawOptions().atomLabels = {} # عدم نمایش لیبل اتم‌ها (فقط ساختار)
+        # drawer.drawOptions().addStereoAnnotation = True
+        # drawer.drawOptions().bondLineWidth = 1.5
+        # drawer.drawOptions().padding = 0.05 # کمی حاشیه
+
+        drawer.DrawMolecule(mol)
+        drawer.FinishDrawing()
+        svg_output = drawer.GetDrawingText()
+        return svg_output
     except Exception as e:
-        print(f"Error in draw_molecule_pil for SMILES {smiles_string}: {e}")
+        print(f"خطا در ایجاد SVG برای SMILES {smiles_string}: {e}")
         return None
 
-# ... (بقیه توابع get_sdf_content, generate_3d_viewer_html, process_alkane_request بدون تغییر باقی می‌مانند) ...
 def get_sdf_content(cid):
+    # ... (این تابع بدون تغییر باقی می‌ماند) ...
     if cid is None:
         return None, "CID برای دریافت محتوای SDF ارائه نشده است."
     print(f"در حال دریافت محتوای SDF برای CID: {cid}...")
@@ -63,6 +66,7 @@ def get_sdf_content(cid):
     return sdf_data, error_message
 
 def generate_3d_viewer_html(sdf_data, molecule_name, width=500, height=400):
+    # ... (این تابع بدون تغییر باقی می‌ماند) ...
     if not sdf_data: return "<p style='color:orange;'>داده SDF برای نمایش سه‌بعدی موجود نیست.</p>"
     try:
         viewer = py3Dmol.view(width=width, height=height)
@@ -84,7 +88,7 @@ def process_alkane_request(molecule_name_input):
         compounds = pcp.get_compounds(molecule_name, 'name', listkey_count=5)
         main_compound_obj, molecular_formula = None, None
         if not compounds: return [], f"مولکول '{molecule_name}' در PubChem یافت نشد."
-        for i, c in enumerate(compounds):
+        for i, c in enumerate(compounds): # ... (منطق انتخاب ترکیب اصلی) ...
             cid = c.cid
             actual_formula = c.molecular_formula if hasattr(c, 'molecular_formula') else None
             if actual_formula:
@@ -93,7 +97,7 @@ def process_alkane_request(molecule_name_input):
                     try:
                         mol_obj = Chem.MolFromSmiles(c.canonical_smiles)
                         if mol_obj:
-                            rdDepictor.Compute2DCoords(mol_obj) # برای رسم بهتر
+                            rdDepictor.Compute2DCoords(mol_obj)
                             if len(Chem.GetMolFrags(mol_obj)) > 1: is_standard_hydrocarbon = False
                             if is_standard_hydrocarbon:
                                 atom_symbols_main = set(atom.GetSymbol() for atom in mol_obj.GetAtoms())
@@ -118,7 +122,7 @@ def process_alkane_request(molecule_name_input):
         isomers_found_raw = pcp.get_compounds(molecular_formula, 'formula', listkey_count=50)
         if not isomers_found_raw: return [], f"ایزومری برای فرمول {molecular_formula} یافت نشد."
         valid_structural_alkanes_entries, unique_accepted_smiles = [], set()
-        for isomer_entry in isomers_found_raw:
+        for isomer_entry in isomers_found_raw: # ... (منطق فیلتر کردن ایزومرها) ...
             smiles = isomer_entry.canonical_smiles
             if not smiles: continue
             try:
@@ -144,26 +148,34 @@ def process_alkane_request(molecule_name_input):
             except Exception: continue
         if not valid_structural_alkanes_entries:
              return [], f"ایزومر آلکان معتبری برای {molecular_formula} پس از فیلتر کردن یافت نشد."
+        
         for entry in sorted(valid_structural_alkanes_entries, key=lambda x: (len(x.canonical_smiles), x.cid)):
-            pil_image = draw_molecule_pil(entry.canonical_smiles) # اندازه جدید اینجا اعمال می‌شود
-            if pil_image:
+            # تغییر: استفاده از draw_molecule_svg
+            svg_image_str = draw_molecule_svg(entry.canonical_smiles, width=280, height=220) # تنظیم اندازه مناسب برای گالری
+            if svg_image_str:
                 name = entry.iupac_name
                 if not name and entry.synonyms:
                     simple_names = [s for s in entry.synonyms if s.lower().endswith("ane") and not any(char.isdigit() for char in s.split('-')[0]) and '-' not in s.split(' ')[0]]
                     if simple_names: name = min(simple_names, key=len)
                     else: name = entry.synonyms[0]
                 elif not name: name = f"Alkane (CID: {entry.cid})"
-                isomer_details_list.append({"cid": entry.cid, "name": name.capitalize(), "smiles": entry.canonical_smiles, "image": pil_image})
+                isomer_details_list.append({
+                    "cid": entry.cid, 
+                    "name": name.capitalize(), 
+                    "smiles": entry.canonical_smiles, 
+                    "image_svg": svg_image_str # ذخیره رشته SVG
+                })
         if isomer_details_list: status_message = f"{len(isomer_details_list)} ایزومر برای '{molecule_name}' ({molecular_formula}) پیدا شد."
         else: status_message = f"ایزومر قابل نمایشی برای '{molecule_name}' یافت نشد."
         return isomer_details_list, status_message
     except pcp.PubChemHTTPError as e: return [], f"خطا در ارتباط با PubChem: {e}"
     except Exception as e: return [], f"خطای غیرمنتظره: {e}\n{traceback.format_exc()}"
 
-# --- رابط کاربری Streamlit (بخش UI بدون تغییر نسبت به نسخه قبلی که نام ایزومر اصلاح شد) ---
+# --- رابط کاربری Streamlit ---
 st.set_page_config(page_title="نمایشگر ایزومرهای آلکان", layout="wide")
-st.title("یابنده و نمایشگر ایزومرهای آلکان")
+st.title("یابنده و نمایشگر ایزومرهای آلکان (با تصاویر SVG)")
 
+# ... (بخش مقداردهی اولیه session state بدون تغییر) ...
 if 'isomer_data' not in st.session_state: st.session_state.isomer_data = []
 if 'status_message' not in st.session_state: st.session_state.status_message = ""
 if 'selected_cid_for_3d' not in st.session_state: st.session_state.selected_cid_for_3d = None
@@ -172,6 +184,7 @@ if 'molecule_searched' not in st.session_state: st.session_state.molecule_search
 if 'molecule_name_input' not in st.session_state: st.session_state.molecule_name_input = "" 
 if 'run_search_after_example' not in st.session_state: st.session_state.run_search_after_example = False
 
+# ... (بخش ورودی و مثال‌ها در سایدبار بدون تغییر) ...
 st.sidebar.header("جستجو و مثال‌ها")
 current_molecule_input = st.sidebar.text_input(
     label="نام آلکان را وارد کنید:",
@@ -224,6 +237,7 @@ if st.session_state.status_message:
     else:
         st.sidebar.info(st.session_state.status_message)
 
+# --- تب‌ها برای نمایش نتایج ---
 if st.session_state.isomer_data or st.session_state.selected_cid_for_3d :
     tab1_title = f"گالری ایزومرها ({len(st.session_state.isomer_data)} مورد)" if st.session_state.isomer_data else "گالری ایزومرها"
     tab2_title = f"نمایش سه‌بعدی ({st.session_state.selected_name_for_3d})" if st.session_state.selected_cid_for_3d and st.session_state.selected_name_for_3d else "نمایش سه‌بعدی"
@@ -238,9 +252,13 @@ if st.session_state.isomer_data or st.session_state.selected_cid_for_3d :
             for i, isomer in enumerate(st.session_state.isomer_data):
                 with gallery_cols[i % num_columns_gallery]:
                     container = st.container(border=True) 
-                    container.image(isomer["image"], 
-                                    caption=f"{isomer['name']}", 
-                                    use_container_width=True) 
+                    # تغییر: نمایش SVG با markdown
+                    if isomer["image_svg"]:
+                        container.markdown(isomer["image_svg"], unsafe_allow_html=True)
+                    else:
+                        container.markdown("<small>تصویر ناموجود</small>", unsafe_allow_html=True)
+                    
+                    container.markdown(f"**{isomer['name']}**", unsafe_allow_html=True) # نام ایزومر
                     container.markdown(f"<small>SMILES: {isomer['smiles']}<br>CID: {isomer['cid']}</small>", unsafe_allow_html=True)
                     if container.button(f"نمایش سه‌بعدی", key=f"btn_3d_tab_{isomer['cid']}"):
                         st.session_state.selected_cid_for_3d = isomer['cid']
@@ -252,6 +270,7 @@ if st.session_state.isomer_data or st.session_state.selected_cid_for_3d :
             st.info("برای مشاهده گالری، ابتدا یک آلکان جستجو کنید.")
 
     with tab_3d_viewer:
+        # ... (بخش نمایش سه‌بعدی بدون تغییر) ...
         if st.session_state.selected_cid_for_3d:
             st.subheader(f"ساختار سه‌بعدی برای: {st.session_state.selected_name_for_3d}")
             with st.spinner(f"در حال بارگذاری ساختار سه‌بعدی برای {st.session_state.selected_name_for_3d} (CID: {st.session_state.selected_cid_for_3d})..."):
