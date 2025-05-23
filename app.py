@@ -10,23 +10,19 @@ from rdkit.Chem import rdDepictor
 
 # --- Helper Functions ---
 def draw_molecule_pil(smiles_string, size=(350, 300)):
-    """Draws a molecule from a SMILES string using RDKit and returns a PIL Image object."""
     try:
         mol = Chem.MolFromSmiles(smiles_string)
         if mol:
             rdDepictor.Compute2DCoords(mol)
             img = MolToImage(mol, size=size)
             return img
-        else:
-            return None
+        else: return None
     except Exception as e:
         print(f"Error in draw_molecule_pil for SMILES {smiles_string}: {e}")
         return None
 
 def get_sdf_content(cid):
-    """Fetches the 3D SDF content for a given CID from PubChem."""
-    if cid is None:
-        return None, "CID not provided for SDF content."
+    if cid is None: return None, "CID not provided for SDF content."
     print(f"Fetching SDF content for CID: {cid}...")
     temp_sdf_file_dir = "/tmp" 
     if not os.path.exists(temp_sdf_file_dir):
@@ -51,7 +47,6 @@ def get_sdf_content(cid):
     return sdf_data, error_message
 
 def generate_3d_viewer_html(sdf_data, molecule_name, display_style='stick', width=500, height=400):
-    """Generates the HTML for the py3Dmol viewer with a specified display style."""
     if not sdf_data: return "<p style='color:orange; text-align:center;'>SDF data not available for 3D view.</p>"
     try:
         viewer = py3Dmol.view(width=width, height=height)
@@ -59,12 +54,18 @@ def generate_3d_viewer_html(sdf_data, molecule_name, display_style='stick', widt
         
         if display_style == 'stick':
             viewer.setStyle({'stick': {}})
+        elif display_style == 'sphere': # CPK style
+            # پارامتر 'quality' را می‌توان برای بهبود ظاهر امتحان کرد، اما ممکن است همیشه تاثیر زیادی نداشته باشد
+            # مقادیر بالاتر کیفیت بهتر اما عملکرد کندتر را نتیجه می‌دهند.
+            # viewer.setStyle({'sphere': {'scale': 0.35, 'quality': 8}}) # مثال
+            viewer.setStyle({'sphere': {'scale': 0.35}})
         elif display_style == 'line':
-            viewer.setStyle({'line': {'linewidth': 2.0, 'colorscheme': 'blackCarbon'}})
+            # افزایش ضخامت خط و استفاده از رنگ تیره‌تر
+            viewer.setStyle({'line': {'linewidth': 2.0, 'colorscheme': 'blackCarbon'}}) # 'colorscheme': 'blackCarbon' برای خطوط سیاه
         elif display_style == 'ball_and_stick':
             viewer.setStyle({'stick': {'radius': 0.08}, 'sphere': {'scale': 0.25}})
         else: 
-            viewer.setStyle({'stick': {}}) # Default
+            viewer.setStyle({'stick': {}})
             
         viewer.setBackgroundColor('0xeeeeee')
         viewer.zoomTo()
@@ -75,68 +76,11 @@ def generate_3d_viewer_html(sdf_data, molecule_name, display_style='stick', widt
             st.error(f"Error creating 3D viewer for {molecule_name} with style {display_style}: {e}")
         return error_msg_html
 
-def get_compound_properties(cid):
-    """Fetches and formats common chemical properties for a given CID."""
-    if cid is None:
-        return None # Or return an empty dict or a dict with an error message
-    try:
-        print(f"Fetching properties for CID {cid}...") # Log
-        compound = pcp.Compound.from_cid(cid)
-        properties = {}
-
-        properties["Molecular Formula"] = compound.molecular_formula if compound.molecular_formula else "N/A"
-        
-        mw_value = compound.molecular_weight
-        if mw_value is not None:
-            try:
-                properties["Molecular Weight"] = f"{float(mw_value):.2f} g/mol"
-            except (ValueError, TypeError): 
-                properties["Molecular Weight"] = str(mw_value) # Display as string if conversion fails
-        else:
-            properties["Molecular Weight"] = "N/A"
-
-        properties["IUPAC Name"] = compound.iupac_name if compound.iupac_name else "N/A"
-        # Keep SMILES even if it's the same, or decide to show only one if they are identical
-        properties["Canonical SMILES"] = compound.canonical_smiles if compound.canonical_smiles else "N/A"
-        if compound.isomeric_smiles and compound.isomeric_smiles != compound.canonical_smiles:
-            properties["Isomeric SMILES"] = compound.isomeric_smiles
-        
-        properties["InChI"] = compound.inchi if compound.inchi else "N/A"
-        properties["InChIKey"] = compound.inchikey if compound.inchikey else "N/A"
-        
-        properties["Heavy Atom Count"] = str(compound.heavy_atom_count) if compound.heavy_atom_count is not None else "N/A"
-        properties["Rotatable Bond Count"] = str(compound.rotatable_bond_count) if compound.rotatable_bond_count is not None else "N/A"
-        properties["H-Bond Donor Count"] = str(compound.h_bond_donor_count) if compound.h_bond_donor_count is not None else "N/A"
-        properties["H-Bond Acceptor Count"] = str(compound.h_bond_acceptor_count) if compound.h_bond_acceptor_count is not None else "N/A"
-
-        xlogp_value = compound.xlogp
-        if xlogp_value is not None:
-            try:
-                properties["XLogP"] = f"{float(xlogp_value):.2f}"
-            except (ValueError, TypeError):
-                properties["XLogP"] = str(xlogp_value)
-        else:
-            properties["XLogP"] = "N/A"
-        
-        print(f"Properties fetched for CID {cid}: {properties.keys()}") # Log
-        return properties
-
-    except Exception as e:
-        print(f"Error fetching properties for CID {cid}: {e}")
-        print(traceback.format_exc()) 
-        return {"Error": f"Could not retrieve all properties for CID {cid}. Some data may be missing or PubChem API limit might be reached."}
-
-
 def process_alkane_request(molecule_name_input):
-    """
-    Processes an alkane name, finds its isomers, and returns a list of isomer details
-    and a status message.
-    """
     if not molecule_name_input or not molecule_name_input.strip():
         return [], "Please enter a molecule name."
     molecule_name = molecule_name_input.strip().lower()
-    status_message = f"Searching for '{molecule_name}'..."
-    isomer_details_list = []
+    status_message, isomer_details_list = f"Searching for '{molecule_name}'...", []
     try:
         compounds = pcp.get_compounds(molecule_name, 'name', listkey_count=5)
         main_compound_obj, molecular_formula = None, None
@@ -307,7 +251,8 @@ if st.session_state.isomer_data or st.session_state.selected_cid_for_3d :
     with tab_gallery:
         if st.session_state.isomer_data:
             st.subheader(f"Isomers found for: {st.session_state.molecule_searched.capitalize()}")
-            num_columns_gallery = 3 
+            # حذف st.number_input برای تعداد ستون‌ها
+            num_columns_gallery = 3 # تعداد ستون ثابت
             gallery_cols = st.columns(num_columns_gallery)
             for i, isomer in enumerate(st.session_state.isomer_data):
                 with gallery_cols[i % num_columns_gallery]:
@@ -330,25 +275,32 @@ if st.session_state.isomer_data or st.session_state.selected_cid_for_3d :
         if st.session_state.selected_cid_for_3d:
             st.subheader(f"3D Structure for: {st.session_state.selected_name_for_3d}")
 
+            # انتخابگر سبک نمایش با حذف 'Sphere (CPK)' اگر نامطلوب است
             style_options_map = { 
                 'Stick': 'stick',
+                # 'Sphere (CPK)': 'sphere', # حذف شده یا برای تست نگه دارید
                 'Line': 'line',
                 'Ball and Stick': 'ball_and_stick'
             }
             style_labels = list(style_options_map.keys())
-            try:
+            
+            try: # پیدا کردن ایندکس سبک فعلی
                 current_style_label = [k for k, v in style_options_map.items() if v == st.session_state.selected_3d_style][0]
                 current_style_index = style_labels.index(current_style_label)
             except IndexError: 
                 current_style_index = 0 
-                if style_labels: 
+                if style_labels: # اگر لیبل‌ها خالی نباشند
                     st.session_state.selected_3d_style = style_options_map[style_labels[0]]
-                else: 
+                else: # اگر هیچ گزینه‌ای برای سبک وجود ندارد (نباید اتفاق بیفتد)
                     st.session_state.selected_3d_style = 'stick'
 
+
             selected_style_label = st.radio(
-                "Select Display Style:", options=style_labels, key="radio_3d_style",
-                horizontal=True, index=current_style_index 
+                "Select Display Style:",
+                options=style_labels,
+                key="radio_3d_style",
+                horizontal=True,
+                index=current_style_index 
             )
             if style_options_map.get(selected_style_label) != st.session_state.selected_3d_style:
                 st.session_state.selected_3d_style = style_options_map[selected_style_label]
@@ -356,6 +308,7 @@ if st.session_state.isomer_data or st.session_state.selected_cid_for_3d :
 
             nav_col_layout = [1, 0.1, 1.5, 0.1, 1] 
             prev_col, _, clear_col, _, next_col = st.columns(nav_col_layout)
+            
             with prev_col:
                 if st.button("⬅️ Previous", key="prev_3d_icon", help="View Previous Isomer", use_container_width=True,
                               disabled=(st.session_state.current_3d_index <= 0)):
@@ -364,12 +317,14 @@ if st.session_state.isomer_data or st.session_state.selected_cid_for_3d :
                     st.session_state.selected_cid_for_3d = prev_isomer['cid']
                     st.session_state.selected_name_for_3d = prev_isomer['name']
                     st.rerun()
+            
             with clear_col:
                 if st.button("Clear 3D View", key="clear_3d_view_tab_main", use_container_width=True):
                     st.session_state.selected_cid_for_3d = None
                     st.session_state.selected_name_for_3d = ""
                     st.session_state.current_3d_index = -1
                     st.rerun()
+
             with next_col:
                 if st.button("Next ➡️", key="next_3d_icon", help="View Next Isomer", use_container_width=True,
                               disabled=(st.session_state.current_3d_index >= len(st.session_state.isomer_data) - 1)):
@@ -384,40 +339,16 @@ if st.session_state.isomer_data or st.session_state.selected_cid_for_3d :
                 sdf_data, error = get_sdf_content(st.session_state.selected_cid_for_3d)
                 if sdf_data:
                     html_3d = generate_3d_viewer_html(
-                        sdf_data, st.session_state.selected_name_for_3d, 
+                        sdf_data, 
+                        st.session_state.selected_name_for_3d, 
                         display_style=st.session_state.selected_3d_style,
-                        width=600, height=450 
+                        width=600, 
+                        height=450 
                     )
                     st.components.v1.html(html_3d, height=470, width=620, scrolling=False)
             
-            st.markdown("---")
-            st.subheader("Chemical Properties:")
-            # Ensure CID is not None before fetching properties
-            if st.session_state.selected_cid_for_3d is not None:
-                with st.spinner(f"Fetching properties for {st.session_state.selected_name_for_3d}..."):
-                    properties = get_compound_properties(st.session_state.selected_cid_for_3d)
-                    if properties:
-                        if "Error" in properties:
-                            st.error(properties["Error"])
-                        else:
-                            prop_cols = st.columns(2) 
-                            prop_list = list(properties.items())
-                            for i, (key, value) in enumerate(prop_list):
-                                with prop_cols[i % 2]:
-                                    # For SMILES and InChI, allow line breaks for better readability
-                                    if key in ["Canonical SMILES", "Isomeric SMILES", "InChI", "InChIKey"]:
-                                        st.markdown(f"**{key}:**")
-                                        st.code(value, language=None) # Use st.code for preformatted text
-                                    else:
-                                        st.markdown(f"**{key}:** {value}")
-                    else:
-                        st.info("No specific properties found or an error occurred while fetching properties.")
-            else:
-                st.info("CID is not selected, cannot fetch properties.")
-
-
         else:
-            st.info("Select an isomer from the 'Isomer Gallery' tab to view its 3D structure and properties.")
+            st.info("Select an isomer from the 'Isomer Gallery' tab to view its 3D structure.")
 else: 
     if st.session_state.molecule_searched and not st.session_state.isomer_data:
         pass 
