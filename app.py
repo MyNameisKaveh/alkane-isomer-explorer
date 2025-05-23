@@ -120,7 +120,7 @@ def process_alkane_request(molecule_name_input):
         
         main_name = main_compound_obj.iupac_name or molecule_name
         status_message = f"Finding isomers for {main_name} (Formula: {molecular_formula})..."
-        isomers_found_raw = pcp.get_compounds(molecular_formula, 'formula', listkey_count=50)
+        isomers_found_raw = pcp.get_compounds(molecular_formula, 'formula', listkey_count=200)
         if not isomers_found_raw: return [], f"No isomers found for formula {molecular_formula}."
         
         valid_structural_alkanes_entries, unique_accepted_smiles = [], set()
