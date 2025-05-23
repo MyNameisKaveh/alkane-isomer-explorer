@@ -74,7 +74,7 @@ def generate_3d_viewer_html(sdf_data, molecule_name, display_style='stick', widt
         viewer.addModel(sdf_data, 'sdf')
         if display_style == 'stick': viewer.setStyle({'stick': {}})
         elif display_style == 'sphere': viewer.setStyle({'sphere': {'scale': 0.35}})
-        elif display_style == 'line': viewer.setStyle({'line': {'linewidth': 4.0, 'colorscheme': 'byElement'}})
+        elif display_style == 'line': viewer.setStyle({'line': {'linewidth': 16.0, 'colorscheme': 'Jmol'}})
         elif display_style == 'ball_and_stick': viewer.setStyle({'stick': {'radius': 0.08}, 'sphere': {'scale': 0.25}})
         else: viewer.setStyle({'stick': {}})
         viewer.setBackgroundColor('0xeeeeee')
