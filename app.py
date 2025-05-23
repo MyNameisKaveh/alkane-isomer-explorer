@@ -46,7 +46,7 @@ def get_sdf_content(cid):
         st.warning(error_message)
     return sdf_data, error_message
 
-def generate_3d_viewer_html(sdf_data, molecule_name, display_style='stick', component_width=600, component_height=450):
+def generate_3d_viewer_html(sdf_data, molecule_name, display_style='stick', component_width=600, component_height=600):
     """Generates the HTML for the py3Dmol viewer with adjustments for centering."""
     if not sdf_data: return "<p style='color:orange; text-align:center;'>SDF data not available for 3D view.</p>"
     try:
