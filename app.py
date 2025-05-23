@@ -103,9 +103,13 @@ def generate_3d_viewer_html(sdf_data, molecule_name, display_style='stick', comp
         else:
             viewer.setStyle({'stick': {}})
             
-        viewer.setBackgroundColor('0xeeeeee')
+        # Set orthographic projection for better centering
+        viewer.setProjection('orthographic')
         viewer.center()  # Center the view on the molecule (now at origin)
         viewer.zoomTo()  # Adjust zoom to fit the molecule
+        
+        # Manual translation to adjust position (tweak these values as needed)
+        viewer.translate(-10, -10, 0)  # Move left and down by 10 units
         
         return viewer._make_html()
     except Exception as e:
