@@ -7,7 +7,7 @@ import os
 import traceback
 from PIL import Image
 
-# --- توابع کمکی (بدون تغییر نسبت به نسخه قبلی Streamlit) ---
+# --- توابع کمکی (بدون تغییر) ---
 def draw_molecule_pil(smiles_string, size=(250, 250)):
     try:
         mol = Chem.MolFromSmiles(smiles_string)
@@ -15,10 +15,8 @@ def draw_molecule_pil(smiles_string, size=(250, 250)):
             img = MolToImage(mol, size=size)
             return img
         else:
-            # st.warning(f"خطا در پارس کردن SMILES: {smiles_string}") # نمایش در بخش وضعیت بهتر است
             return None
     except Exception as e:
-        # st.error(f"خطا در رسم مولکول برای SMILES {smiles_string}: {e}")
         return None
 
 def get_sdf_content(cid):
@@ -43,7 +41,7 @@ def get_sdf_content(cid):
         if os.path.exists(temp_sdf_file):
             try: os.remove(temp_sdf_file)
             except Exception: pass
-    if error_message and 'st' in globals(): st.warning(error_message) # فقط اگر در زمینه Streamlit هستیم
+    if error_message and 'st' in globals() and hasattr(st, 'warning'): st.warning(error_message)
     return sdf_data, error_message
 
 def generate_3d_viewer_html(sdf_data, cid, width=500, height=400):
@@ -56,7 +54,7 @@ def generate_3d_viewer_html(sdf_data, cid, width=500, height=400):
         viewer.zoomTo()
         return viewer._make_html()
     except Exception as e:
-        if 'st' in globals(): st.error(f"خطا در ایجاد نمایشگر سه‌بعدی برای CID {cid}: {e}")
+        if 'st' in globals() and hasattr(st, 'error'): st.error(f"خطا در ایجاد نمایشگر سه‌بعدی برای CID {cid}: {e}")
         return f"<p style='color:red;'>خطا در رندر سه‌بعدی: {e}</p>"
 
 def process_alkane_request(molecule_name_input):
@@ -68,7 +66,7 @@ def process_alkane_request(molecule_name_input):
         compounds = pcp.get_compounds(molecule_name, 'name', listkey_count=5)
         main_compound_obj, molecular_formula = None, None
         if not compounds: return [], f"مولکول '{molecule_name}' در PubChem یافت نشد."
-        for i, c in enumerate(compounds): # ... (منطق انتخاب ترکیب اصلی مانند قبل) ...
+        for i, c in enumerate(compounds):
             cid = c.cid
             actual_formula = c.molecular_formula if hasattr(c, 'molecular_formula') else None
             if actual_formula:
@@ -101,7 +99,7 @@ def process_alkane_request(molecule_name_input):
         isomers_found_raw = pcp.get_compounds(molecular_formula, 'formula', listkey_count=50)
         if not isomers_found_raw: return [], f"ایزومری برای فرمول {molecular_formula} یافت نشد."
         valid_structural_alkanes_entries, unique_accepted_smiles = [], set()
-        for isomer_entry in isomers_found_raw: # ... (منطق فیلتر کردن ایزومرها مانند قبل) ...
+        for isomer_entry in isomers_found_raw:
             smiles = isomer_entry.canonical_smiles
             if not smiles: continue
             try:
@@ -142,7 +140,6 @@ def process_alkane_request(molecule_name_input):
         return isomer_details_list, status_message
     except pcp.PubChemHTTPError as e: return [], f"خطا در ارتباط با PubChem: {e}"
     except Exception as e: return [], f"خطای غیرمنتظره: {e}\n{traceback.format_exc()}"
-
 # --- رابط کاربری Streamlit ---
 st.set_page_config(page_title="نمایشگر ایزومرهای آلکان", layout="wide")
 st.title("یابنده و نمایشگر ایزومرهای آلکان")
@@ -152,51 +149,60 @@ if 'isomer_data' not in st.session_state: st.session_state.isomer_data = []
 if 'status_message' not in st.session_state: st.session_state.status_message = ""
 if 'selected_cid_for_3d' not in st.session_state: st.session_state.selected_cid_for_3d = None
 if 'molecule_searched' not in st.session_state: st.session_state.molecule_searched = ""
-if 'molecule_name_input' not in st.session_state: st.session_state.molecule_name_input = "" # برای نگهداری مقدار ورودی
+if 'molecule_name_input' not in st.session_state: st.session_state.molecule_name_input = "" 
+if 'run_search_after_example' not in st.session_state: st.session_state.run_search_after_example = False
 
-# --- بخش ورودی و مثال‌ها ---
+
+# --- بخش ورودی و مثال‌ها در سایدبار ---
 st.sidebar.header("جستجو و مثال‌ها")
-# استفاده از st.session_state برای مقداردهی اولیه ورودی متن
-st.session_state.molecule_name_input = st.sidebar.text_input(
+current_molecule_input = st.sidebar.text_input(
     label="نام آلکان را وارد کنید:",
-    value=st.session_state.molecule_name_input, # حفظ مقدار قبلی
+    value=st.session_state.molecule_name_input,
     placeholder="مثال: butane, pentane",
-    key="main_molecule_input" # کلید برای دسترسی به مقدار در صورت نیاز
+    key="sidebar_molecule_input" 
 )
+# به‌روزرسانی session_state اگر کاربر مستقیماً در تکست باکس تایپ کند
+if current_molecule_input != st.session_state.molecule_name_input:
+    st.session_state.molecule_name_input = current_molecule_input
+    st.session_state.run_search_after_example = False # اگر کاربر تایپ می‌کند، جستجوی خودکار غیرفعال شود
+
 
 example_alkanes = ["butane", "pentane", "hexane", "heptane"]
 st.sidebar.subheader("یا یکی از مثال‌ها را انتخاب کنید:")
-cols_examples = st.sidebar.columns(2) # دو ستون برای دکمه‌های مثال
+cols_examples = st.sidebar.columns(2) 
 for i, example in enumerate(example_alkanes):
     if cols_examples[i % 2].button(example.capitalize(), key=f"example_{example}"):
-        st.session_state.molecule_name_input = example # به‌روزرسانی مقدار ورودی
-        st.session_state.selected_cid_for_3d = None # پاک کردن نمایش سه‌بعدی قبلی
-        # اجرای مجدد برای اعمال تغییر ورودی و شروع جستجو
-        st.experimental_rerun()
+        st.session_state.molecule_name_input = example 
+        st.session_state.selected_cid_for_3d = None 
+        st.session_state.run_search_after_example = True # فلگ برای اجرای جستجو
+        st.rerun() # اجرای مجدد برای اعمال تغییر ورودی و سپس اجرای جستجو
 
 
-search_button = st.sidebar.button("جستجوی ایزومرها", type="primary")
+search_button_sidebar = st.sidebar.button("جستجوی ایزومرها", type="primary", key="sidebar_search_button")
 
-# انجام جستجو اگر دکمه کلیک شده یا نام مولکول از مثال‌ها تغییر کرده
-# یا اگر molecule_name_input از طریق کد (مثال‌ها) مقداردهی شده و search_button زده نشده
-# (برای جلوگیری از اجرای دوباره process_alkane_request اگر فقط st.rerun شده)
-# این منطق برای اجرای جستجو نیاز به دقت دارد.
+# منطق اجرای جستجو
+# اگر دکمه جستجو کلیک شده یا فلگ run_search_after_example تنظیم شده باشد
+should_run_search = False
+if search_button_sidebar and st.session_state.molecule_name_input:
+    should_run_search = True
+elif st.session_state.run_search_after_example and st.session_state.molecule_name_input:
+    should_run_search = True
+    st.session_state.run_search_after_example = False # ریست کردن فلگ
 
-# یک راه ساده‌تر: فقط با کلیک دکمه جستجو، جستجو را انجام بده
-if search_button and st.session_state.molecule_name_input:
+if should_run_search:
     with st.spinner(f"در حال پردازش برای {st.session_state.molecule_name_input}..."):
         isomers, status_msg = process_alkane_request(st.session_state.molecule_name_input)
         st.session_state.isomer_data = isomers
         st.session_state.status_message = status_msg
         st.session_state.selected_cid_for_3d = None 
         st.session_state.molecule_searched = st.session_state.molecule_name_input
-elif search_button and not st.session_state.molecule_name_input:
+elif search_button_sidebar and not st.session_state.molecule_name_input: # اگر دکمه زده شد ولی ورودی خالی است
     st.session_state.status_message = "لطفا نام یک مولکول را وارد کنید یا یک مثال انتخاب کنید."
     st.session_state.isomer_data = []
     st.session_state.selected_cid_for_3d = None
     st.session_state.molecule_searched = ""
 
-# نمایش پیام وضعیت در سایدبار یا بدنه اصلی
+
 if st.session_state.status_message:
     if "خطا" in st.session_state.status_message or "یافت نشد" in st.session_state.status_message :
         st.sidebar.error(st.session_state.status_message)
@@ -208,7 +214,8 @@ if st.session_state.status_message:
 if st.session_state.isomer_data or st.session_state.selected_cid_for_3d :
     tab1_title = f"گالری ایزومرها ({len(st.session_state.isomer_data)} مورد)" if st.session_state.isomer_data else "گالری ایزومرها"
     tab2_title = f"نمایش سه‌بعدی (CID: {st.session_state.selected_cid_for_3d})" if st.session_state.selected_cid_for_3d else "نمایش سه‌بعدی"
-
+    
+    # ایجاد تب‌ها تنها اگر واقعا داده‌ای برای نمایش وجود دارد یا چیزی برای نمایش سه‌بعدی انتخاب شده
     tab_gallery, tab_3d_viewer = st.tabs([tab1_title, tab2_title])
 
     with tab_gallery:
@@ -218,15 +225,12 @@ if st.session_state.isomer_data or st.session_state.selected_cid_for_3d :
             gallery_cols = st.columns(num_columns_gallery)
             for i, isomer in enumerate(st.session_state.isomer_data):
                 with gallery_cols[i % num_columns_gallery]:
-                    container = st.container()
+                    container = st.container(border=True) # اضافه کردن کادر به هر آیتم گالری
                     container.image(isomer["image"], caption=f"{isomer['name']} (CID: {isomer['cid']})", use_column_width="always")
                     container.markdown(f"<small>SMILES: {isomer['smiles']}</small>", unsafe_allow_html=True)
                     if container.button(f"نمایش سه‌بعدی", key=f"btn_3d_tab_{isomer['cid']}"):
                         st.session_state.selected_cid_for_3d = isomer['cid']
-                        # برای رفتن به تب سه‌بعدی به طور خودکار، نیاز به ترفند JS یا تغییر state دیگری است
-                        # Streamlit به طور مستقیم کنترل تغییر تب فعال را از پایتون نمی‌دهد.
-                        # اما با اجرای مجدد، عنوان تب سه‌بعدی به‌روز می‌شود.
-                        st.experimental_rerun()
+                        st.rerun() 
         elif st.session_state.molecule_searched:
             st.info("ایزومری برای نمایش در گالری وجود ندارد.")
         else:
@@ -240,17 +244,15 @@ if st.session_state.isomer_data or st.session_state.selected_cid_for_3d :
                 if sdf_data:
                     html_3d = generate_3d_viewer_html(sdf_data, st.session_state.selected_cid_for_3d, width=600, height=450)
                     st.components.v1.html(html_3d, height=470, width=620, scrolling=False)
-                # پیام خطا توسط get_sdf_content نمایش داده می‌شود
             
             if st.button("پاک کردن نمایش سه‌بعدی", key="clear_3d_view_tab"):
                 st.session_state.selected_cid_for_3d = None
-                st.experimental_rerun()
+                st.rerun()
         else:
             st.info("برای مشاهده ساختار سه‌بعدی، یک ایزومر را از تب 'گالری ایزومرها' انتخاب کنید.")
 else:
     if st.session_state.molecule_searched and not st.session_state.isomer_data:
-        # اگر جستجو انجام شده ولی نتیجه‌ای نبوده و پیامی در سایدبار نمایش داده شده
-        pass
+        pass # پیام خطا/وضعیت قبلا در سایدبار نمایش داده شده
     else:
         st.info("برای شروع، نام یک آلکان را در سایدبار وارد کرده و جستجو کنید یا یک مثال را انتخاب نمایید.")
 
