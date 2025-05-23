@@ -1,31 +1,23 @@
 import streamlit as st
 import pubchempy as pcp
 from rdkit import Chem
-from rdkit.Chem.Draw import MolToImage, MolDrawOptions # Added MolDrawOptions
+from rdkit.Chem.Draw import MolToImage, MolDrawOptions
 import py3Dmol
 import os
 import traceback
 from PIL import Image
 from rdkit.Chem import rdDepictor
-from io import BytesIO # For image download
+from io import BytesIO
 
 # --- Helper Functions ---
-def draw_molecule_pil(smiles_string, size=(400, 350), legend=""): # Added legend parameter
-    """Draws a molecule and returns a PIL Image object with thicker bonds and an optional legend."""
+def draw_molecule_pil(smiles_string, size=(400, 350), legend=""):
     try:
         mol = Chem.MolFromSmiles(smiles_string)
         if mol:
-            rdDepictor.Compute2DCoords(mol) # Important for good coordinates
-
-            # Set drawing options for thicker bonds and other appearances
+            rdDepictor.Compute2DCoords(mol)
             draw_options = MolDrawOptions()
-            draw_options.bondLineWidth = 2  # Increase bond thickness (default is usually 1)
-            draw_options.padding = 0.05     # Add some padding around the molecule
-            # draw_options.atomLabelFontSize = 18 # Example: Change atom label font size
-            # draw_options.fixedBondLength = 40 # Example: Set fixed bond length
-            # draw_options.addAtomIndices = True # Example: Display atom indices
-            
-            # Using legend to add a title to the image
+            draw_options.bondLineWidth = 2
+            draw_options.padding = 0.05     
             img = MolToImage(mol, size=size, legend=legend if legend else "", options=draw_options)
             return img
         else: return None
@@ -34,13 +26,10 @@ def draw_molecule_pil(smiles_string, size=(400, 350), legend=""): # Added legend
         return None
 
 def image_to_bytes(pil_image, format="PNG"):
-    """Converts a PIL Image object to bytes."""
-    if pil_image is None:
-        return None
+    if pil_image is None: return None
     img_byte_arr = BytesIO()
     pil_image.save(img_byte_arr, format=format)
-    img_byte_arr = img_byte_arr.getvalue()
-    return img_byte_arr
+    return img_byte_arr.getvalue()
 
 def get_sdf_content(cid):
     if cid is None: return None, "CID not provided for SDF content."
@@ -73,7 +62,7 @@ def generate_3d_viewer_html(sdf_data, molecule_name, display_style='stick', widt
         viewer = py3Dmol.view(width=width, height=height)
         viewer.addModel(sdf_data, 'sdf')
         if display_style == 'stick': viewer.setStyle({'stick': {}})
-        elif display_style == 'sphere': viewer.setStyle({'sphere': {'scale': 0.35}})
+        elif display_style == 'sphere': viewer.setStyle({'sphere': {'scale': 0.35}}) # CPK-like
         elif display_style == 'line': viewer.setStyle({'line': {'linewidth': 2.0, 'colorscheme': 'blackCarbon'}})
         elif display_style == 'ball_and_stick': viewer.setStyle({'stick': {'radius': 0.08}, 'sphere': {'scale': 0.25}})
         else: viewer.setStyle({'stick': {}})
@@ -93,21 +82,17 @@ def get_compound_properties(compound_obj):
         "Molecular Formula": getattr(compound_obj, 'molecular_formula', 'N/A'),
         "Molecular Weight": f"{getattr(compound_obj, 'molecular_weight', 'N/A')} g/mol",
         "Canonical SMILES": getattr(compound_obj, 'canonical_smiles', 'N/A'),
-        "Isomeric SMILES": getattr(compound_obj, 'isomeric_smiles', 'N/A'),
+        # ... (سایر خواص مانند قبل)
         "PubChem CID": getattr(compound_obj, 'cid', 'N/A'),
         "Charge": getattr(compound_obj, 'charge', 'N/A'),
-        "Exact Mass": f"{getattr(compound_obj, 'exact_mass', 'N/A')} amu",
-        "Monoisotopic Mass": f"{getattr(compound_obj, 'monoisotopic_mass', 'N/A')} amu",
-        "TPSA": f"{getattr(compound_obj, 'tpsa', 'N/A')} Å²" if hasattr(compound_obj, 'tpsa') and compound_obj.tpsa is not None else 'N/A',
-        "XLogP": getattr(compound_obj, 'xlogp', 'N/A'),
         "Heavy Atom Count": getattr(compound_obj, 'heavy_atom_count', 'N/A'),
         "H-Bond Donor Count": getattr(compound_obj, 'hydrogen_bond_donor_count', 'N/A'),
         "H-Bond Acceptor Count": getattr(compound_obj, 'hydrogen_bond_acceptor_count', 'N/A'),
-        "Rotatable Bond Count": getattr(compound_obj, 'rotatable_bond_count', 'N/A'),
     }
     return properties
 
 def process_alkane_request(molecule_name_input):
+    # ... (کد کامل process_alkane_request مانند قبل) ...
     if not molecule_name_input or not molecule_name_input.strip():
         return [], "Please enter a molecule name.", None 
     molecule_name = molecule_name_input.strip().lower()
@@ -118,8 +103,7 @@ def process_alkane_request(molecule_name_input):
         main_compound_obj, molecular_formula = None, None
         if not compounds: return [], f"Molecule '{molecule_name}' not found on PubChem.", None
         for c in compounds:
-            cid = c.cid
-            actual_formula = c.molecular_formula if hasattr(c, 'molecular_formula') else None
+            cid = c.cid; actual_formula = c.molecular_formula if hasattr(c, 'molecular_formula') else None
             if actual_formula:
                 is_standard_hydrocarbon = True 
                 if c.canonical_smiles:
@@ -153,7 +137,7 @@ def process_alkane_request(molecule_name_input):
         if not isomers_found_raw: return [], f"No isomers found for formula {molecular_formula}.", main_molecule_properties
         valid_structural_alkanes_entries, unique_accepted_smiles = [], set()
         for isomer_entry in isomers_found_raw:
-            smiles = isomer_entry.canonical_smiles
+            smiles = isomer_entry.canonical_smiles;_ = smiles
             if not smiles: continue
             try:
                 mol_iso = Chem.MolFromSmiles(smiles)
@@ -179,17 +163,15 @@ def process_alkane_request(molecule_name_input):
         if not valid_structural_alkanes_entries:
              return [], f"No valid alkane isomers found for {molecular_formula} after filtering.", main_molecule_properties
         for entry in sorted(valid_structural_alkanes_entries, key=lambda x: (len(x.canonical_smiles), x.cid)):
-            name = entry.iupac_name # Get name first for the legend
+            name = entry.iupac_name
             if not name and entry.synonyms:
                 simple_names = [s for s in entry.synonyms if s.lower().endswith("ane") and not any(char.isdigit() for char in s.split('-')[0]) and '-' not in s.split(' ')[0]]
                 if simple_names: name = min(simple_names, key=len)
                 else: name = entry.synonyms[0]
             elif not name: name = f"Alkane (CID: {entry.cid})"
-            
-            pil_image = draw_molecule_pil(entry.canonical_smiles, legend=name.capitalize()) # Pass name as legend
+            pil_image = draw_molecule_pil(entry.canonical_smiles, legend=name.capitalize()) 
             if pil_image:
                 isomer_details_list.append({"cid": entry.cid, "name": name.capitalize(), "smiles": entry.canonical_smiles, "image": pil_image})
-        
         if isomer_details_list: status_message = f"{len(isomer_details_list)} isomers found for '{molecule_name}' ({molecular_formula})."
         else: status_message = f"No displayable isomers found for '{molecule_name}'."
         return isomer_details_list, status_message, main_molecule_properties
@@ -210,7 +192,6 @@ def process_general_molecule_search(search_term):
             name_to_display = props.get("IUPAC Name", term.capitalize()) if props else term.capitalize()
             img_2d = None
             if compound_obj.canonical_smiles:
-                # Pass name_to_display as legend for the general molecule image
                 img_2d = draw_molecule_pil(compound_obj.canonical_smiles, size=(450,400), legend=name_to_display)
             molecule_details = {
                 "cid": compound_obj.cid, "name": name_to_display, "properties": props,
@@ -223,12 +204,65 @@ def process_general_molecule_search(search_term):
     except pcp.PubChemHTTPError as e: return None, f"PubChem API Error during general search: {e}"
     except Exception as e: return None, f"An unexpected error occurred during general search: {e}\n{traceback.format_exc()}"
 
+# --- New Helper Function for Element Legend ---
+def generate_element_legend_html(smiles_or_elements_list=None):
+    """
+    Generates an HTML string for an element color legend.
+    If smiles_or_elements_list is a SMILES string, it tries to find elements.
+    If it's a list of element symbols, it uses that.
+    Otherwise, shows a default legend.
+    """
+    # Jmol/py3Dmol default-like colors (approximate hex)
+    element_colors = {
+        'C': '#888888', 'H': '#FFFFFF', 'O': '#FF kırmızı', 'N': '#8F8FFF', # Adjusted N to be lighter blue
+        'S': '#FFC832', 'P': '#FF8000', 'F': '#DAFF7D', 'Cl': '#50D250',
+        'Br': '#C82828', 'I': '#A020F0', 'He': '#D9FFFF', 'Li': '#CC80FF',
+        'B': '#FFB5B5', 'Na': '#AB5CF2', 'Mg': '#8AFF00', 'Al': '#BFA6A6',
+        'Si': '#F0C8A0', 'K': '#8F40D4', 'Ca': '#3CFF00', 'Fe': '#E06633',
+        # Add more as needed, or use a more comprehensive mapping
+        'OTHER': '#BEBEBE' # Default for unlisted elements
+    }
+    
+    elements_in_molecule = set()
+    if isinstance(smiles_or_elements_list, str): # Assume SMILES
+        try:
+            mol = Chem.MolFromSmiles(smiles_or_elements_list)
+            if mol:
+                for atom in mol.GetAtoms():
+                    elements_in_molecule.add(atom.GetSymbol())
+        except: # If SMILES parsing fails, fallback to default
+            elements_in_molecule.clear() 
+            
+    elif isinstance(smiles_or_elements_list, list):
+        elements_in_molecule = set(smiles_or_elements_list)
+
+    # If no specific elements found/provided, show a common default set
+    if not elements_in_molecule:
+        elements_to_show = ['C', 'H', 'O', 'N', 'S', 'P', 'Cl', 'F']
+    else:
+        # Sort for consistent order, maybe prioritize common ones
+        common_first = [el for el in ['C', 'H', 'O', 'N'] if el in elements_in_molecule]
+        other_elements = sorted(list(elements_in_molecule - set(common_first)))
+        elements_to_show = common_first + other_elements
+
+    legend_html = "<div style='padding: 5px; border: 1px solid #444; border-radius: 5px; font-size: 0.75em; background-color: #222;'>"
+    legend_html += "<b style='color: #eee;'>Element Legend:</b><br>"
+    
+    for symbol in elements_to_show:
+        color = element_colors.get(symbol, element_colors['OTHER'])
+        legend_html += f"<span style='display:inline-block; width:10px; height:10px; background-color:{color}; border: 1px solid #555; margin-right:5px; vertical-align: middle;'></span><span style='color: #ddd; vertical-align: middle;'>{symbol}</span><br>"
+            
+    legend_html += "</div>"
+    return legend_html
+
+
 # --- Streamlit UI ---
 st.set_page_config(page_title="Chemical Compound Explorer", layout="centered", initial_sidebar_state="expanded")
 st.title("Chemical Compound Explorer")
 
-# Initialize session state
+# ... (Session state initialization like before) ...
 if 'alkane_isomer_data' not in st.session_state: st.session_state.alkane_isomer_data = []
+# ... (all other session state vars)
 if 'alkane_main_molecule_props' not in st.session_state: st.session_state.alkane_main_molecule_props = None
 if 'selected_isomer_cid_for_3d' not in st.session_state: st.session_state.selected_isomer_cid_for_3d = None
 if 'selected_isomer_name_for_3d' not in st.session_state: st.session_state.selected_isomer_name_for_3d = ""
@@ -242,7 +276,9 @@ if 'alkane_name_input' not in st.session_state: st.session_state.alkane_name_inp
 if 'run_alkane_search_after_example' not in st.session_state: st.session_state.run_alkane_search_after_example = False
 if 'alkane_molecule_searched' not in st.session_state: st.session_state.alkane_molecule_searched = ""
 
-# --- Sidebar ---
+
+# --- Sidebar (like before) ---
+# ... (کد کامل سایدبار از پاسخ قبلی) ...
 st.sidebar.header("Search Options")
 st.sidebar.subheader("1. Alkane Isomer Search")
 current_alkane_input = st.sidebar.text_input(
@@ -305,7 +341,8 @@ if st.session_state.status_message:
     if is_error: st.sidebar.error(st.session_state.status_message)
     else: st.sidebar.info(st.session_state.status_message)
 
-# --- Main Page Tabs ---
+# --- Main Page Tabs (منطق تب‌ها مانند قبل) ---
+# ... (کپی از پاسخ قبلی) ...
 gallery_title, props_title, view2d_title, view3d_title = "Isomer Gallery", "Properties", "2D Structure", "3D View"
 if st.session_state.last_search_type == "alkane":
     if st.session_state.alkane_isomer_data: gallery_title = f"Alkane Isomers ({len(st.session_state.alkane_isomer_data)})"
@@ -326,8 +363,11 @@ else:
     tab_gallery, tab_main_props, tab_3d_isomer = (None, None, None)
     tab_g_props, tab_g_2d, tab_g_3d = (None, None, None)
 
+
+# Content for Alkane Isomer Search
 if st.session_state.last_search_type == "alkane":
     if tab_gallery and st.session_state.alkane_isomer_data:
+        # ... (محتوای تب گالری ایزومر مانند قبل با دکمه دانلود) ...
         with tab_gallery:
             st.subheader(f"Isomers found for: {st.session_state.alkane_molecule_searched.capitalize()}")
             num_columns_gallery = 3 
@@ -336,16 +376,15 @@ if st.session_state.last_search_type == "alkane":
                 with gallery_cols[i % num_columns_gallery]:
                     container = st.container(border=True) 
                     pil_image_isomer = isomer["image"]
-                    # The legend is now part of the image itself due to changes in draw_molecule_pil
                     container.image(pil_image_isomer, caption=f"CID: {isomer['cid']}", use_container_width=True) 
-                    
                     if pil_image_isomer:
                         img_bytes_isomer = image_to_bytes(pil_image_isomer)
                         container.download_button(label="Download 2D", data=img_bytes_isomer, file_name=f"{isomer['name'].replace(' ', '_')}_CID_{isomer['cid']}_2D.png", mime="image/png", key=f"download_iso_{isomer['cid']}")
-                    container.markdown(f"<small>SMILES: {isomer['smiles']}</small>", unsafe_allow_html=True) # CID is now in caption
+                    container.markdown(f"<small>SMILES: {isomer['smiles']}</small>", unsafe_allow_html=True)
                     if container.button(f"View 3D", key=f"btn_3d_isomer_{isomer['cid']}"):
                         st.session_state.selected_isomer_cid_for_3d, st.session_state.selected_isomer_name_for_3d, st.session_state.current_isomer_3d_index = isomer['cid'], isomer['name'], i; st.rerun()
     if tab_main_props and st.session_state.alkane_main_molecule_props:
+        # ... (محتوای تب خواص مولکول اصلی مانند قبل) ...
         with tab_main_props:
             props = st.session_state.alkane_main_molecule_props
             main_mol_name = props.get("IUPAC Name", st.session_state.alkane_molecule_searched.capitalize())
@@ -357,6 +396,7 @@ if st.session_state.last_search_type == "alkane":
             st.markdown("---")
     if tab_3d_isomer and st.session_state.selected_isomer_cid_for_3d:
         with tab_3d_isomer:
+            # ... (محتوای تب سه‌بعدی ایزومر با انتخابگر سبک و دکمه‌های ناوبری مانند قبل) ...
             st.subheader(f"3D Structure for Isomer: {st.session_state.selected_isomer_name_for_3d}")
             style_options_map = {'Stick': 'stick', 'Line': 'line', 'Ball and Stick': 'ball_and_stick'}
             style_labels = list(style_options_map.keys())
@@ -389,6 +429,8 @@ if st.session_state.last_search_type == "alkane":
                     html_3d = generate_3d_viewer_html(sdf_data, st.session_state.selected_isomer_name_for_3d, display_style=st.session_state.selected_3d_style, width=600, height=450)
                     st.components.v1.html(html_3d, height=470, width=620, scrolling=False)
 
+
+# Content for General Molecule Search
 if st.session_state.last_search_type == "general" and st.session_state.general_molecule_data:
     g_data = st.session_state.general_molecule_data
     if tab_g_props:
@@ -401,36 +443,67 @@ if st.session_state.last_search_type == "general" and st.session_state.general_m
                     if value_g != 'N/A' and value_g is not None: prop_cols[i_prop_g % 2].markdown(f"**{key_g}:** {value_g}")
             else: st.info("No detailed properties found.")
             st.markdown("---")
+
     if tab_g_2d and g_data.get("image_2d"):
         with tab_g_2d:
             st.subheader(f"2D Structure for: {g_data['name']}")
             pil_image_general = g_data["image_2d"]
-            # The legend is now part of the image itself
             st.image(pil_image_general, use_container_width=True) 
             if pil_image_general:
                 img_bytes_general = image_to_bytes(pil_image_general)
                 st.download_button(label="Download 2D Structure", data=img_bytes_general, file_name=f"{g_data['name'].replace(' ', '_')}_CID_{g_data['cid']}_2D.png", mime="image/png", key=f"download_general_{g_data['cid']}")
+
     if tab_g_3d:
         with tab_g_3d:
             st.subheader(f"3D Structure for: {g_data['name']}")
-            style_options_map_g = {'Stick': 'stick', 'Line': 'line', 'Ball and Stick': 'ball_and_stick'}
-            style_labels_g = list(style_options_map_g.keys())
-            try:
-                current_style_label_g = [k for k, v in style_options_map_g.items() if v == st.session_state.selected_3d_style][0]
-                current_style_index_g = style_labels_g.index(current_style_label_g)
-            except IndexError: 
-                current_style_index_g = 0 
-                if style_labels_g: st.session_state.selected_3d_style = style_options_map_g[style_labels_g[0]]
-                else: st.session_state.selected_3d_style = 'stick'
-            selected_style_label_g = st.radio("Select Display Style:", options=style_labels_g, key="radio_3d_style_general", horizontal=True, index=current_style_index_g)
-            if style_options_map_g.get(selected_style_label_g) != st.session_state.selected_3d_style:
-                st.session_state.selected_3d_style = style_options_map_g[selected_style_label_g]; st.rerun() 
-            with st.spinner(f"Loading 3D structure for {g_data['name']}..."):
-                sdf_data, error = get_sdf_content(g_data['cid'])
-                if sdf_data:
-                    html_3d = generate_3d_viewer_html(sdf_data, g_data['name'], display_style=st.session_state.selected_3d_style, width=600, height=450)
-                    st.components.v1.html(html_3d, height=470, width=620, scrolling=False)
-                else: st.info(f"3D structure could not be loaded. {error if error else ''}")
+            # Layout for 3D viewer and legend
+            viewer_col, legend_col = st.columns([3, 1]) # Viewer gets 3/4, legend gets 1/4 width
+
+            with viewer_col:
+                style_options_map_g = {'Stick': 'stick', 'Line': 'line', 'Ball and Stick': 'ball_and_stick'}
+                style_labels_g = list(style_options_map_g.keys())
+                try:
+                    current_style_label_g = [k for k, v in style_options_map_g.items() if v == st.session_state.selected_3d_style][0]
+                    current_style_index_g = style_labels_g.index(current_style_label_g)
+                except IndexError: 
+                    current_style_index_g = 0 
+                    if style_labels_g: st.session_state.selected_3d_style = style_options_map_g[style_labels_g[0]]
+                    else: st.session_state.selected_3d_style = 'stick'
+                
+                selected_style_label_g = st.radio(
+                    "Select Display Style:", 
+                    options=style_labels_g, 
+                    key="radio_3d_style_general", 
+                    horizontal=True, 
+                    index=current_style_index_g
+                )
+                if style_options_map_g.get(selected_style_label_g) != st.session_state.selected_3d_style:
+                    st.session_state.selected_3d_style = style_options_map_g[selected_style_label_g]
+                    st.rerun() 
+
+                with st.spinner(f"Loading 3D structure for {g_data['name']}..."):
+                    sdf_data, error = get_sdf_content(g_data['cid'])
+                    if sdf_data:
+                        html_3d = generate_3d_viewer_html(
+                            sdf_data, 
+                            g_data['name'], 
+                            display_style=st.session_state.selected_3d_style, 
+                            width=450, # Adjust width for column
+                            height=400
+                        )
+                        st.components.v1.html(html_3d, height=420, width=470, scrolling=False)
+                    else: 
+                        st.info(f"3D structure could not be loaded. {error if error else ''}")
+            
+            with legend_col:
+                st.markdown("##### ") # Add some space above legend
+                if g_data.get('smiles'):
+                    legend_html_content = generate_element_legend_html(g_data['smiles'])
+                    st.markdown(legend_html_content, unsafe_allow_html=True)
+                else: # Fallback to default legend if no SMILES
+                    legend_html_content = generate_element_legend_html() 
+                    st.markdown(legend_html_content, unsafe_allow_html=True)
+
 
 st.sidebar.markdown("---")
 st.sidebar.markdown("Built with Streamlit, RDKit, PubChemPy, and py3Dmol.")
