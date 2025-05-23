@@ -211,7 +211,7 @@ def process_general_molecule_search(search_term):
             img_2d = None
             if compound_obj.canonical_smiles:
                 # Pass name_to_display as legend for the general molecule image
-                img_2d = draw_molecule_pil(compound_obj.canonical_smiles, size=(450,400), legend=name_to_display)
+                img_2d = draw_molecule_pil(compound_obj.canonical_smiles, size=(1600,1400), legend=name_to_display)
             molecule_details = {
                 "cid": compound_obj.cid, "name": name_to_display, "properties": props,
                 "image_2d": img_2d, "smiles": compound_obj.canonical_smiles 
