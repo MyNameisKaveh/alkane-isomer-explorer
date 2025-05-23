@@ -10,7 +10,7 @@ from rdkit.Chem import rdDepictor
 
 # --- Helper Functions (توابع کمکی draw_molecule_pil, get_sdf_content, generate_3d_viewer_html, get_compound_properties مانند قبل) ---
 # ... (این توابع از پاسخ قبلی کپی شوند، تغییری نکرده‌اند) ...
-def draw_molecule_pil(smiles_string, size=(350, 300)):
+def draw_molecule_pil(smiles_string, size=(750, 700)):
     try:
         mol = Chem.MolFromSmiles(smiles_string)
         if mol:
