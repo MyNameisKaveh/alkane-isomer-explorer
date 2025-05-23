@@ -1,0 +1,4 @@
+gradio
+pubchempy
+rdkit-pypi
+py3Dmol
