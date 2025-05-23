@@ -10,7 +10,7 @@ from rdkit.Chem import rdDepictor
 from io import BytesIO # For image download
 
 # --- Helper Functions ---
-def draw_molecule_pil(smiles_string, size=(400, 350)):
+def draw_molecule_pil(smiles_string, size=(1600, 1400)):
     """Draws a molecule and returns a PIL Image object."""
     try:
         mol = Chem.MolFromSmiles(smiles_string)
