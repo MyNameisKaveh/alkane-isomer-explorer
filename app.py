@@ -1,7 +1,7 @@
 import streamlit as st
 import pubchempy as pcp
 from rdkit import Chem
-from rdkit.Chem.Draw import MolDrawOptions, MolDraw2DCairo # Changed import for Cairo
+from rdkit.Chem.Draw import MolToImage, MolDrawOptions
 import py3Dmol
 import os
 import traceback
@@ -11,77 +11,23 @@ from io import BytesIO
 
 # --- Helper Functions ---
 def draw_molecule_pil(smiles_string, size=(400, 350), legend="", add_atom_indices=False, add_stereo_annot=True):
-    """
-    Draws a molecule and returns a PIL Image object with enhanced features.
-    - legend: Text to display on the image.
-    - add_atom_indices: Whether to display atom indices.
-    - add_stereo_annot: Whether to display R/S and E/Z stereo annotations.
-    """
     try:
         mol = Chem.MolFromSmiles(smiles_string)
-        if not mol:
-            return None
-
-        # Generate 2D coordinates
+        if not mol: return None
         rdDepictor.Compute2DCoords(mol)
-        # Optionally prepare for stereo annotation if not already done
-        # Chem.AssignStereochemistryFrom3D(mol) # If you have 3D coords and want to infer
-        # Or ensure existing stereo flags are correct if parsing from SMILES/SDF with stereo
-        # For SMILES with stereo, it should be fine. For others, explicit assignment might be needed.
-
-        # Use MolDraw2DCairo for better quality and more drawing options
-        drawer = MolDraw2DCairo(size[0], size[1])
-        options = drawer.drawOptions()
-
-        options.bondLineWidth = 2
-        options.padding = 0.05
-        # options.atomLabelFontSize = 16 # Adjust if needed
-        # options.legendFontSize = 18 # Adjust if needed for the legend
-
-        if add_atom_indices:
-            options.addAtomIndices = True
-        
+        draw_options = MolDrawOptions()
+        draw_options.bondLineWidth = 2
+        draw_options.padding = 0.05
+        if add_atom_indices: draw_options.addAtomIndices = True
         if add_stereo_annot:
-            options.addStereoAnnotation = True # Shows R/S, E/Z if info is available
-            options.includeChiralFlagLabel = True # Adds a chiral flag to the molecule if chiral (and not racemic)
-
-        # Example of custom atom colors (optional)
-        # options.setAtomPalette({6: (0.1,0.1,0.1), 1:(0.8,0.8,0.8)}) # Darker Carbon, Lighter Hydrogens (if shown)
-        
-        # Draw molecule with legend
-        # Note: MolDraw2DCairo doesn't have a direct 'legend' parameter like MolToImage.
-        # We can draw the legend manually if needed, or RDKit might place it if MolToImage is used with Cairo backend.
-        # For simplicity with Cairo, we'll rely on the caption in Streamlit for the main name.
-        # If legend is crucial directly ON the image with Cairo, it needs more manual drawing steps.
-        
-        # A common way to handle legend with MolDraw2DCairo is to prepare the molecule with a legend property
-        # or draw it separately. Let's try to use DrawMoleculeWithHighlights for legend if possible,
-        # or just draw the molecule and Streamlit caption will handle the "legend".
-        
-        # For now, we'll focus on drawing the molecule itself with the options.
-        # The 'legend' parameter in this function will be used for the Streamlit caption or if we find a direct way.
-
-        drawer.DrawMolecule(mol) # Pass options if DrawMolecule takes them, or they are set globally on drawer.
-        drawer.FinishDrawing()
-        
-        png_data = drawer.GetDrawingText() # This is PNG data as bytes
-        pil_image = Image.open(BytesIO(png_data))
-        
-        # If you still want to try MolToImage's legend handling but with Cairo quality (less direct control over Cairo options)
-        # from rdkit.Chem.Draw import rd bevorzugtCairo
-        # if rd bevorzugtCairo: # Check if Cairo is available and preferred
-        #    img = MolToImage(mol, size=size, legend=legend if legend else "", options=options) # options might be partially used
-        #    return img
-        # else:
-        #    return pil_image # Fallback to the Cairo drawn image without MolToImage legend
-
-        return pil_image
-
+            options.addStereoAnnotation = True
+            options.includeChiralFlagLabel = True
+        img = MolToImage(mol, size=size, legend=legend if legend else "", options=draw_options)
+        return img
     except Exception as e:
         print(f"Error in draw_molecule_pil for SMILES {smiles_string} with legend '{legend}': {e}")
         return None
 
-# ... (بقیه توابع image_to_bytes, get_sdf_content, generate_3d_viewer_html, get_compound_properties مانند قبل) ...
 def image_to_bytes(pil_image, format="PNG"):
     if pil_image is None: return None
     img_byte_arr = BytesIO(); pil_image.save(img_byte_arr, format=format)
@@ -152,23 +98,19 @@ def get_compound_properties(compound_obj):
     }
     return properties
 
-
-# تابع پردازش برای ایزومرهای آلکان
 def process_alkane_request(molecule_name_input):
-    # ... (بخش زیادی از کد مانند قبل) ...
-    # تغییر اصلی: پاس دادن نام به عنوان legend به draw_molecule_pil
     if not molecule_name_input or not molecule_name_input.strip():
         return [], "Please enter a molecule name.", None 
     molecule_name = molecule_name_input.strip().lower()
-    # ... (بقیه کد تابع process_alkane_request مانند پاسخ قبلی، فقط فراخوانی draw_molecule_pil را بررسی کنید)
     status_message, isomer_details_list = f"Searching for '{molecule_name}'...", []
     main_molecule_properties = None
     try:
         compounds = pcp.get_compounds(molecule_name, 'name', listkey_count=5) 
         main_compound_obj, molecular_formula = None, None
         if not compounds: return [], f"Molecule '{molecule_name}' not found on PubChem.", None
-        for c in compounds: # ... (منطق انتخاب main_compound_obj) ...
-            cid = c.cid; actual_formula = c.molecular_formula if hasattr(c, 'molecular_formula') else None
+        for c in compounds:
+            cid = c.cid
+            actual_formula = c.molecular_formula if hasattr(c, 'molecular_formula') else None
             if actual_formula:
                 is_standard_hydrocarbon = True 
                 if c.canonical_smiles:
@@ -190,19 +132,25 @@ def process_alkane_request(molecule_name_input):
                     except Exception: is_standard_hydrocarbon = False 
                 else: is_standard_hydrocarbon = False 
                 if not is_standard_hydrocarbon: continue
-                if molecule_name in [syn.lower() for syn in c.synonyms]: main_compound_obj, molecular_formula = c, actual_formula; break
-                if not main_compound_obj: main_compound_obj, molecular_formula = c, actual_formula
-        if not main_compound_obj or not molecular_formula: return [], f"Standard alkane '{molecule_name}' not found or does not meet criteria.", None
+                if molecule_name in [syn.lower() for syn in c.synonyms]: 
+                    main_compound_obj = c; molecular_formula = actual_formula; break
+                if not main_compound_obj: main_compound_obj = c; molecular_formula = actual_formula
+        if not main_compound_obj or not molecular_formula:
+            return [], f"Standard alkane '{molecule_name}' not found or does not meet criteria.", None
         main_molecule_properties = get_compound_properties(main_compound_obj)
         main_name = main_molecule_properties.get("IUPAC Name", molecule_name.capitalize()) if main_molecule_properties else molecule_name.capitalize()
         status_message = f"Finding isomers for {main_name} (Formula: {molecular_formula})..."
         isomers_found_raw = pcp.get_compounds(molecular_formula, 'formula', listkey_count=50)
         if not isomers_found_raw: return [], f"No isomers found for formula {molecular_formula}.", main_molecule_properties
+        
         valid_structural_alkanes_entries, unique_accepted_smiles = [], set()
-        for isomer_entry in isomers_found_raw: # ... (منطق فیلتر ایزومر) ...
-            smiles = isomer_entry.canonical_smiles;            if not smiles: continue
+        for isomer_entry in isomers_found_raw:
+            smiles = isomer_entry.canonical_smiles
+            if not smiles: # اصلاح شده
+                continue
             try:
-                mol_iso = Chem.MolFromSmiles(smiles);                if not mol_iso: continue
+                mol_iso = Chem.MolFromSmiles(smiles)
+                if not mol_iso: continue
                 is_valid_candidate = True 
                 if len(Chem.GetMolFrags(mol_iso)) > 1: is_valid_candidate = False
                 if is_valid_candidate:
@@ -221,7 +169,10 @@ def process_alkane_request(molecule_name_input):
                     if canonical_smiles_for_uniqueness not in unique_accepted_smiles:
                         valid_structural_alkanes_entries.append(isomer_entry); unique_accepted_smiles.add(canonical_smiles_for_uniqueness)
             except Exception: continue
-        if not valid_structural_alkanes_entries: return [], f"No valid alkane isomers found for {molecular_formula} after filtering.", main_molecule_properties
+        
+        if not valid_structural_alkanes_entries:
+             return [], f"No valid alkane isomers found for {molecular_formula} after filtering.", main_molecule_properties
+        
         for entry in sorted(valid_structural_alkanes_entries, key=lambda x: (len(x.canonical_smiles), x.cid)):
             name = entry.iupac_name
             if not name and entry.synonyms:
@@ -229,20 +180,18 @@ def process_alkane_request(molecule_name_input):
                 if simple_names: name = min(simple_names, key=len)
                 else: name = entry.synonyms[0]
             elif not name: name = f"Alkane (CID: {entry.cid})"
-            # Pass name as legend, and decide on atom indices/stereo for isomers
+            
             pil_image = draw_molecule_pil(entry.canonical_smiles, legend=name.capitalize(), add_atom_indices=False, add_stereo_annot=True) 
             if pil_image:
                 isomer_details_list.append({"cid": entry.cid, "name": name.capitalize(), "smiles": entry.canonical_smiles, "image": pil_image})
+        
         if isomer_details_list: status_message = f"{len(isomer_details_list)} isomers found for '{molecule_name}' ({molecular_formula})."
         else: status_message = f"No displayable isomers found for '{molecule_name}'."
         return isomer_details_list, status_message, main_molecule_properties
     except pcp.PubChemHTTPError as e: return [], f"PubChem API Error: {e}", None
     except Exception as e: return [], f"An unexpected error occurred: {e}\n{traceback.format_exc()}", None
 
-# تابع پردازش برای جستجوی مولکول عمومی
 def process_general_molecule_search(search_term):
-    # ... (مانند قبل) ...
-    # تغییر اصلی: پاس دادن نام به عنوان legend به draw_molecule_pil و تنظیمات دیگر
     if not search_term or not search_term.strip():
         return None, "Please enter a chemical name or identifier."
     term = search_term.strip()
@@ -259,7 +208,7 @@ def process_general_molecule_search(search_term):
                 img_2d = draw_molecule_pil(compound_obj.canonical_smiles, 
                                            size=(450,400), 
                                            legend=name_to_display,
-                                           add_atom_indices=True, # Show atom indices for general molecules
+                                           add_atom_indices=True, 
                                            add_stereo_annot=True)
             molecule_details = {
                 "cid": compound_obj.cid, "name": name_to_display, "properties": props,
@@ -272,15 +221,11 @@ def process_general_molecule_search(search_term):
     except pcp.PubChemHTTPError as e: return None, f"PubChem API Error during general search: {e}"
     except Exception as e: return None, f"An unexpected error occurred during general search: {e}\n{traceback.format_exc()}"
 
-
-# --- Streamlit UI (بخش UI تقریباً بدون تغییر نسبت به نسخه قبلی که مشکل IndexError حل شد) ---
-# ... (کد کامل UI از پاسخ قبلی که IndexError آن حل شده بود، کپی شود) ...
-# ... (تنها تغییر در UI، حذف کپشن از st.image چون لجند حالا روی خود تصویر است، ...
-# ... و شاید تغییر جزئی در نمایش اطلاعات زیر تصویر در گالری)
-
+# --- Streamlit UI ---
 st.set_page_config(page_title="Chemical Compound Explorer", layout="centered", initial_sidebar_state="expanded")
 st.title("Chemical Compound Explorer")
 
+# Initialize session state
 if 'alkane_isomer_data' not in st.session_state: st.session_state.alkane_isomer_data = []
 if 'alkane_main_molecule_props' not in st.session_state: st.session_state.alkane_main_molecule_props = None
 if 'selected_isomer_cid_for_3d' not in st.session_state: st.session_state.selected_isomer_cid_for_3d = None
@@ -295,6 +240,7 @@ if 'alkane_name_input' not in st.session_state: st.session_state.alkane_name_inp
 if 'run_alkane_search_after_example' not in st.session_state: st.session_state.run_alkane_search_after_example = False
 if 'alkane_molecule_searched' not in st.session_state: st.session_state.alkane_molecule_searched = ""
 
+# --- Sidebar ---
 st.sidebar.header("Search Options")
 st.sidebar.subheader("1. Alkane Isomer Search")
 current_alkane_input = st.sidebar.text_input(
@@ -357,6 +303,7 @@ if st.session_state.status_message:
     if is_error: st.sidebar.error(st.session_state.status_message)
     else: st.sidebar.info(st.session_state.status_message)
 
+# --- Main Page Tabs ---
 gallery_title, props_title, view2d_title, view3d_title = "Isomer Gallery", "Properties", "2D Structure", "3D View"
 if st.session_state.last_search_type == "alkane":
     if st.session_state.alkane_isomer_data: gallery_title = f"Alkane Isomers ({len(st.session_state.alkane_isomer_data)})"
@@ -387,7 +334,6 @@ if st.session_state.last_search_type == "alkane":
                 with gallery_cols[i % num_columns_gallery]:
                     container = st.container(border=True) 
                     pil_image_isomer = isomer["image"]
-                    # Legend is now part of the image from draw_molecule_pil
                     container.image(pil_image_isomer, caption=f"CID: {isomer['cid']}", use_container_width=True) 
                     if pil_image_isomer:
                         img_bytes_isomer = image_to_bytes(pil_image_isomer)
@@ -455,7 +401,7 @@ if st.session_state.last_search_type == "general" and st.session_state.general_m
         with tab_g_2d:
             st.subheader(f"2D Structure for: {g_data['name']}")
             pil_image_general = g_data["image_2d"]
-            st.image(pil_image_general, use_container_width=True) # Legend is now on the image
+            st.image(pil_image_general, use_container_width=True) 
             if pil_image_general:
                 img_bytes_general = image_to_bytes(pil_image_general)
                 st.download_button(label="Download 2D Structure", data=img_bytes_general, file_name=f"{g_data['name'].replace(' ', '_')}_CID_{g_data['cid']}_2D.png", mime="image/png", key=f"download_general_{g_data['cid']}")
