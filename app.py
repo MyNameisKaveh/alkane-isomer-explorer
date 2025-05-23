@@ -64,7 +64,7 @@ def generate_3d_viewer_html(sdf_data, molecule_name, display_style='stick', comp
         viewer.setBackgroundColor('0xeeeeee')
         viewer.center() 
         viewer.zoomTo()
-        viewer.zoom(0.9) # Zoom out slightly
+        viewer.zoom(0.6) # Zoom out slightly
         return viewer._make_html()
     except Exception as e:
         error_msg_html = f"<p style='color:red; text-align:center;'>Error rendering 3D view for {molecule_name}: {str(e)}</p>"
