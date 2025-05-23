@@ -21,9 +21,9 @@ def draw_molecule_pil(smiles_string, size=(1600, 1400), legend=""): # Added lege
             draw_options = MolDrawOptions()
             draw_options.bondLineWidth = 16  # Increase bond thickness (default is usually 1)
             draw_options.padding = 0.05     # Add some padding around the molecule
-            draw_options.atomLabelFontSize = 18 # Example: Change atom label font size
-            draw_options.fixedBondLength = 40 # Example: Set fixed bond length
-            draw_options.addAtomIndices = True # Example: Display atom indices
+            # draw_options.atomLabelFontSize = 18 # Example: Change atom label font size
+            # draw_options.fixedBondLength = 40 # Example: Set fixed bond length
+            # draw_options.addAtomIndices = True # Example: Display atom indices
             
             # Using legend to add a title to the image
             img = MolToImage(mol, size=size, legend=legend if legend else "", options=draw_options)
