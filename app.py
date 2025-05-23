@@ -202,7 +202,7 @@ def process_general_molecule_search(search_term):
             # Get 2D image
             img_2d = None
             if compound_obj.canonical_smiles:
-                img_2d = draw_molecule_pil(compound_obj.canonical_smiles, size=(400,350)) # Larger image for single display
+                img_2d = draw_molecule_pil(compound_obj.canonical_smiles, size=(700,650)) # Larger image for single display
 
             molecule_details = {
                 "cid": compound_obj.cid,
