@@ -1,5 +1,5 @@
 pubchempy
 py3Dmol
-rdkit-pypi
+rdkit==2025.3.2
 gradio==5.29.0
 Pillow
