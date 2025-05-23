@@ -1,37 +1,46 @@
 import streamlit as st
 import pubchempy as pcp
 from rdkit import Chem
-from rdkit.Chem.Draw import MolToImage, MolDrawOptions
+from rdkit.Chem.Draw import MolToImage, MolDrawOptions # Added MolDrawOptions
 import py3Dmol
 import os
 import traceback
 from PIL import Image
 from rdkit.Chem import rdDepictor
-from io import BytesIO
+from io import BytesIO # For image download
 
 # --- Helper Functions ---
-def draw_molecule_pil(smiles_string, size=(400, 350), legend="", add_atom_indices=False, add_stereo_annot=True):
+def draw_molecule_pil(smiles_string, size=(400, 350), legend=""): # Added legend parameter
+    """Draws a molecule and returns a PIL Image object with thicker bonds and an optional legend."""
     try:
         mol = Chem.MolFromSmiles(smiles_string)
-        if not mol: return None
-        rdDepictor.Compute2DCoords(mol)
-        draw_options = MolDrawOptions()
-        draw_options.bondLineWidth = 2
-        draw_options.padding = 0.05
-        if add_atom_indices: draw_options.addAtomIndices = True
-        if add_stereo_annot:
-            options.addStereoAnnotation = True
-            options.includeChiralFlagLabel = True
-        img = MolToImage(mol, size=size, legend=legend if legend else "", options=draw_options)
-        return img
+        if mol:
+            rdDepictor.Compute2DCoords(mol) # Important for good coordinates
+
+            # Set drawing options for thicker bonds and other appearances
+            draw_options = MolDrawOptions()
+            draw_options.bondLineWidth = 2  # Increase bond thickness (default is usually 1)
+            draw_options.padding = 0.05     # Add some padding around the molecule
+            # draw_options.atomLabelFontSize = 18 # Example: Change atom label font size
+            # draw_options.fixedBondLength = 40 # Example: Set fixed bond length
+            # draw_options.addAtomIndices = True # Example: Display atom indices
+            
+            # Using legend to add a title to the image
+            img = MolToImage(mol, size=size, legend=legend if legend else "", options=draw_options)
+            return img
+        else: return None
     except Exception as e:
         print(f"Error in draw_molecule_pil for SMILES {smiles_string} with legend '{legend}': {e}")
         return None
 
 def image_to_bytes(pil_image, format="PNG"):
-    if pil_image is None: return None
-    img_byte_arr = BytesIO(); pil_image.save(img_byte_arr, format=format)
-    return img_byte_arr.getvalue()
+    """Converts a PIL Image object to bytes."""
+    if pil_image is None:
+        return None
+    img_byte_arr = BytesIO()
+    pil_image.save(img_byte_arr, format=format)
+    img_byte_arr = img_byte_arr.getvalue()
+    return img_byte_arr
 
 def get_sdf_content(cid):
     if cid is None: return None, "CID not provided for SDF content."
@@ -142,12 +151,10 @@ def process_alkane_request(molecule_name_input):
         status_message = f"Finding isomers for {main_name} (Formula: {molecular_formula})..."
         isomers_found_raw = pcp.get_compounds(molecular_formula, 'formula', listkey_count=50)
         if not isomers_found_raw: return [], f"No isomers found for formula {molecular_formula}.", main_molecule_properties
-        
         valid_structural_alkanes_entries, unique_accepted_smiles = [], set()
         for isomer_entry in isomers_found_raw:
             smiles = isomer_entry.canonical_smiles
-            if not smiles: # اصلاح شده
-                continue
+            if not smiles: continue
             try:
                 mol_iso = Chem.MolFromSmiles(smiles)
                 if not mol_iso: continue
@@ -169,19 +176,17 @@ def process_alkane_request(molecule_name_input):
                     if canonical_smiles_for_uniqueness not in unique_accepted_smiles:
                         valid_structural_alkanes_entries.append(isomer_entry); unique_accepted_smiles.add(canonical_smiles_for_uniqueness)
             except Exception: continue
-        
         if not valid_structural_alkanes_entries:
              return [], f"No valid alkane isomers found for {molecular_formula} after filtering.", main_molecule_properties
-        
         for entry in sorted(valid_structural_alkanes_entries, key=lambda x: (len(x.canonical_smiles), x.cid)):
-            name = entry.iupac_name
+            name = entry.iupac_name # Get name first for the legend
             if not name and entry.synonyms:
                 simple_names = [s for s in entry.synonyms if s.lower().endswith("ane") and not any(char.isdigit() for char in s.split('-')[0]) and '-' not in s.split(' ')[0]]
                 if simple_names: name = min(simple_names, key=len)
                 else: name = entry.synonyms[0]
             elif not name: name = f"Alkane (CID: {entry.cid})"
             
-            pil_image = draw_molecule_pil(entry.canonical_smiles, legend=name.capitalize(), add_atom_indices=False, add_stereo_annot=True) 
+            pil_image = draw_molecule_pil(entry.canonical_smiles, legend=name.capitalize()) # Pass name as legend
             if pil_image:
                 isomer_details_list.append({"cid": entry.cid, "name": name.capitalize(), "smiles": entry.canonical_smiles, "image": pil_image})
         
@@ -205,11 +210,8 @@ def process_general_molecule_search(search_term):
             name_to_display = props.get("IUPAC Name", term.capitalize()) if props else term.capitalize()
             img_2d = None
             if compound_obj.canonical_smiles:
-                img_2d = draw_molecule_pil(compound_obj.canonical_smiles, 
-                                           size=(450,400), 
-                                           legend=name_to_display,
-                                           add_atom_indices=True, 
-                                           add_stereo_annot=True)
+                # Pass name_to_display as legend for the general molecule image
+                img_2d = draw_molecule_pil(compound_obj.canonical_smiles, size=(450,400), legend=name_to_display)
             molecule_details = {
                 "cid": compound_obj.cid, "name": name_to_display, "properties": props,
                 "image_2d": img_2d, "smiles": compound_obj.canonical_smiles 
@@ -334,11 +336,13 @@ if st.session_state.last_search_type == "alkane":
                 with gallery_cols[i % num_columns_gallery]:
                     container = st.container(border=True) 
                     pil_image_isomer = isomer["image"]
+                    # The legend is now part of the image itself due to changes in draw_molecule_pil
                     container.image(pil_image_isomer, caption=f"CID: {isomer['cid']}", use_container_width=True) 
+                    
                     if pil_image_isomer:
                         img_bytes_isomer = image_to_bytes(pil_image_isomer)
                         container.download_button(label="Download 2D", data=img_bytes_isomer, file_name=f"{isomer['name'].replace(' ', '_')}_CID_{isomer['cid']}_2D.png", mime="image/png", key=f"download_iso_{isomer['cid']}")
-                    container.markdown(f"<small>SMILES: {isomer['smiles']}</small>", unsafe_allow_html=True)
+                    container.markdown(f"<small>SMILES: {isomer['smiles']}</small>", unsafe_allow_html=True) # CID is now in caption
                     if container.button(f"View 3D", key=f"btn_3d_isomer_{isomer['cid']}"):
                         st.session_state.selected_isomer_cid_for_3d, st.session_state.selected_isomer_name_for_3d, st.session_state.current_isomer_3d_index = isomer['cid'], isomer['name'], i; st.rerun()
     if tab_main_props and st.session_state.alkane_main_molecule_props:
@@ -401,6 +405,7 @@ if st.session_state.last_search_type == "general" and st.session_state.general_m
         with tab_g_2d:
             st.subheader(f"2D Structure for: {g_data['name']}")
             pil_image_general = g_data["image_2d"]
+            # The legend is now part of the image itself
             st.image(pil_image_general, use_container_width=True) 
             if pil_image_general:
                 img_bytes_general = image_to_bytes(pil_image_general)
