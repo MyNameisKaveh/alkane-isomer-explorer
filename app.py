@@ -198,7 +198,7 @@ def process_general_molecule_search(search_term):
             name_to_display = props.get("IUPAC Name", term.capitalize()) if props else term.capitalize()
             img_2d = None
             if compound_obj.canonical_smiles:
-                img_2d = draw_molecule_pil(compound_obj.canonical_smiles, size=(450,400))
+                img_2d = draw_molecule_pil(compound_obj.canonical_smiles, size=(1600,1400))
             molecule_details = {
                 "cid": compound_obj.cid, "name": name_to_display, "properties": props,
                 "image_2d": img_2d, "smiles": compound_obj.canonical_smiles 
