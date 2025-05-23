@@ -223,7 +223,7 @@ def process_general_molecule_search(search_term):
 
 
 # --- Streamlit UI ---
-st.set_page_config(page_title="Chemical Compound Explorer", layout="wide", initial_sidebar_state="expanded")
+st.set_page_config(page_title="Chemical Compound Explorer", layout="centered", initial_sidebar_state="expanded")
 st.title("Chemical Compound Explorer")
 
 # Initialize session state
