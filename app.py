@@ -7,7 +7,7 @@ import os
 import traceback
 from PIL import Image
 
-# --- توابع کمکی (بدون تغییر نسبت به نسخه قبلی که st.rerun اصلاح شد) ---
+# --- توابع کمکی (بدون تغییر) ---
 def draw_molecule_pil(smiles_string, size=(250, 250)):
     try:
         mol = Chem.MolFromSmiles(smiles_string)
@@ -44,7 +44,7 @@ def get_sdf_content(cid):
     if error_message and 'st' in globals() and hasattr(st, 'warning'): st.warning(error_message)
     return sdf_data, error_message
 
-def generate_3d_viewer_html(sdf_data, cid, width=500, height=400):
+def generate_3d_viewer_html(sdf_data, molecule_name, width=500, height=400): # اضافه شدن molecule_name
     if not sdf_data: return "<p style='color:orange;'>داده SDF برای نمایش سه‌بعدی موجود نیست.</p>"
     try:
         viewer = py3Dmol.view(width=width, height=height)
@@ -52,10 +52,12 @@ def generate_3d_viewer_html(sdf_data, cid, width=500, height=400):
         viewer.setStyle({'stick': {}})
         viewer.setBackgroundColor('0xeeeeee')
         viewer.zoomTo()
+        # می‌توانیم نام مولکول را به عنوان لیبل اضافه کنیم (اختیاری)
+        # viewer.addLabel(molecule_name, {'fontColor':'black', 'backgroundColor': 'lightgray', 'fontSize':12, 'position': {'x':0, 'y':0, 'z':0}})
         return viewer._make_html()
     except Exception as e:
-        if 'st' in globals() and hasattr(st, 'error'): st.error(f"خطا در ایجاد نمایشگر سه‌بعدی برای CID {cid}: {e}")
-        return f"<p style='color:red;'>خطا در رندر سه‌بعدی: {e}</p>"
+        if 'st' in globals() and hasattr(st, 'error'): st.error(f"خطا در ایجاد نمایشگر سه‌بعدی برای {molecule_name}: {e}")
+        return f"<p style='color:red;'>خطا در رندر سه‌بعدی برای {molecule_name}: {e}</p>"
 
 def process_alkane_request(molecule_name_input):
     if not molecule_name_input or not molecule_name_input.strip():
@@ -133,7 +135,7 @@ def process_alkane_request(molecule_name_input):
                     simple_names = [s for s in entry.synonyms if s.lower().endswith("ane") and not any(char.isdigit() for char in s.split('-')[0]) and '-' not in s.split(' ')[0]]
                     if simple_names: name = min(simple_names, key=len)
                     else: name = entry.synonyms[0]
-                elif not name: name = f"Alkane (CID: {entry.cid})"
+                elif not name: name = f"Alkane (CID: {entry.cid})" # CID همچنان برای مواقع ضروری هست
                 isomer_details_list.append({"cid": entry.cid, "name": name.capitalize(), "smiles": entry.canonical_smiles, "image": pil_image})
         if isomer_details_list: status_message = f"{len(isomer_details_list)} ایزومر برای '{molecule_name}' ({molecular_formula}) پیدا شد."
         else: status_message = f"ایزومر قابل نمایشی برای '{molecule_name}' یافت نشد."
@@ -149,10 +151,10 @@ st.title("یابنده و نمایشگر ایزومرهای آلکان")
 if 'isomer_data' not in st.session_state: st.session_state.isomer_data = []
 if 'status_message' not in st.session_state: st.session_state.status_message = ""
 if 'selected_cid_for_3d' not in st.session_state: st.session_state.selected_cid_for_3d = None
+if 'selected_name_for_3d' not in st.session_state: st.session_state.selected_name_for_3d = "" # برای ذخیره نام ایزومر انتخاب شده
 if 'molecule_searched' not in st.session_state: st.session_state.molecule_searched = ""
 if 'molecule_name_input' not in st.session_state: st.session_state.molecule_name_input = "" 
 if 'run_search_after_example' not in st.session_state: st.session_state.run_search_after_example = False
-
 
 # --- بخش ورودی و مثال‌ها در سایدبار ---
 st.sidebar.header("جستجو و مثال‌ها")
@@ -166,7 +168,6 @@ if current_molecule_input != st.session_state.molecule_name_input:
     st.session_state.molecule_name_input = current_molecule_input
     st.session_state.run_search_after_example = False 
 
-
 example_alkanes = ["butane", "pentane", "hexane", "heptane"]
 st.sidebar.subheader("یا یکی از مثال‌ها را انتخاب کنید:")
 cols_examples = st.sidebar.columns(2) 
@@ -174,9 +175,9 @@ for i, example in enumerate(example_alkanes):
     if cols_examples[i % 2].button(example.capitalize(), key=f"example_{example}"):
         st.session_state.molecule_name_input = example 
         st.session_state.selected_cid_for_3d = None 
+        st.session_state.selected_name_for_3d = ""
         st.session_state.run_search_after_example = True 
         st.rerun() 
-
 
 search_button_sidebar = st.sidebar.button("جستجوی ایزومرها", type="primary", key="sidebar_search_button")
 
@@ -193,13 +194,14 @@ if should_run_search:
         st.session_state.isomer_data = isomers
         st.session_state.status_message = status_msg
         st.session_state.selected_cid_for_3d = None 
+        st.session_state.selected_name_for_3d = ""
         st.session_state.molecule_searched = st.session_state.molecule_name_input
 elif search_button_sidebar and not st.session_state.molecule_name_input: 
     st.session_state.status_message = "لطفا نام یک مولکول را وارد کنید یا یک مثال انتخاب کنید."
     st.session_state.isomer_data = []
     st.session_state.selected_cid_for_3d = None
+    st.session_state.selected_name_for_3d = ""
     st.session_state.molecule_searched = ""
-
 
 if st.session_state.status_message:
     if "خطا" in st.session_state.status_message or "یافت نشد" in st.session_state.status_message :
@@ -207,11 +209,11 @@ if st.session_state.status_message:
     else:
         st.sidebar.info(st.session_state.status_message)
 
-
 # --- تب‌ها برای نمایش نتایج ---
 if st.session_state.isomer_data or st.session_state.selected_cid_for_3d :
     tab1_title = f"گالری ایزومرها ({len(st.session_state.isomer_data)} مورد)" if st.session_state.isomer_data else "گالری ایزومرها"
-    tab2_title = f"نمایش سه‌بعدی (CID: {st.session_state.selected_cid_for_3d})" if st.session_state.selected_cid_for_3d else "نمایش سه‌بعدی"
+    # تغییر عنوان تب سه‌بعدی
+    tab2_title = f"نمایش سه‌بعدی ({st.session_state.selected_name_for_3d})" if st.session_state.selected_cid_for_3d and st.session_state.selected_name_for_3d else "نمایش سه‌بعدی"
     
     tab_gallery, tab_3d_viewer = st.tabs([tab1_title, tab2_title])
 
@@ -223,13 +225,14 @@ if st.session_state.isomer_data or st.session_state.selected_cid_for_3d :
             for i, isomer in enumerate(st.session_state.isomer_data):
                 with gallery_cols[i % num_columns_gallery]:
                     container = st.container(border=True) 
-                    # استفاده از use_container_width=True به جای use_column_width
+                    # تغییر کپشن تصویر
                     container.image(isomer["image"], 
-                                    caption=f"{isomer['name']} (CID: {isomer['cid']})", 
+                                    caption=f"{isomer['name']}", # فقط نام ایزومر
                                     use_container_width=True) 
-                    container.markdown(f"<small>SMILES: {isomer['smiles']}</small>", unsafe_allow_html=True)
+                    container.markdown(f"<small>SMILES: {isomer['smiles']}<br>CID: {isomer['cid']}</small>", unsafe_allow_html=True) # CID در اینجا نمایش داده می‌شود
                     if container.button(f"نمایش سه‌بعدی", key=f"btn_3d_tab_{isomer['cid']}"):
                         st.session_state.selected_cid_for_3d = isomer['cid']
+                        st.session_state.selected_name_for_3d = isomer['name'] # ذخیره نام ایزومر
                         st.rerun() 
         elif st.session_state.molecule_searched:
             st.info("ایزومری برای نمایش در گالری وجود ندارد.")
@@ -238,15 +241,18 @@ if st.session_state.isomer_data or st.session_state.selected_cid_for_3d :
 
     with tab_3d_viewer:
         if st.session_state.selected_cid_for_3d:
-            st.subheader(f"ساختار سه‌بعدی برای CID: {st.session_state.selected_cid_for_3d}")
-            with st.spinner(f"در حال بارگذاری ساختار سه‌بعدی برای CID: {st.session_state.selected_cid_for_3d}..."):
+            # تغییر عنوان بخش سه‌بعدی
+            st.subheader(f"ساختار سه‌بعدی برای: {st.session_state.selected_name_for_3d}")
+            with st.spinner(f"در حال بارگذاری ساختار سه‌بعدی برای {st.session_state.selected_name_for_3d} (CID: {st.session_state.selected_cid_for_3d})..."):
                 sdf_data, error = get_sdf_content(st.session_state.selected_cid_for_3d)
                 if sdf_data:
-                    html_3d = generate_3d_viewer_html(sdf_data, st.session_state.selected_cid_for_3d, width=600, height=450)
+                    # ارسال نام به تابع generate_3d_viewer_html (اختیاری، برای استفاده در لیبل داخلی)
+                    html_3d = generate_3d_viewer_html(sdf_data, st.session_state.selected_name_for_3d, width=600, height=450)
                     st.components.v1.html(html_3d, height=470, width=620, scrolling=False)
             
             if st.button("پاک کردن نمایش سه‌بعدی", key="clear_3d_view_tab"):
                 st.session_state.selected_cid_for_3d = None
+                st.session_state.selected_name_for_3d = ""
                 st.rerun()
         else:
             st.info("برای مشاهده ساختار سه‌بعدی، یک ایزومر را از تب 'گالری ایزومرها' انتخاب کنید.")
@@ -255,7 +261,6 @@ else:
         pass 
     else:
         st.info("برای شروع، نام یک آلکان را در سایدبار وارد کرده و جستجو کنید یا یک مثال را انتخاب نمایید.")
-
 
 st.sidebar.markdown("---")
 st.sidebar.markdown("ساخته شده با Streamlit, RDKit, PubChemPy, و py3Dmol.")
