@@ -3,8 +3,8 @@ from rdkit import Chem
 from rdkit.Chem.Draw import MolToImage
 import gradio as gr
 import traceback
-import py3Dmol # اضافه شده
-import os # اضافه شده
+import py3Dmol
+import os
 
 # تابع رسم مولکول دوبعدی (بدون تغییر)
 def draw_molecule(smiles_string):
@@ -26,31 +26,42 @@ def generate_3d_html_from_cid(cid):
         return "<p style='color:orange;'>CID برای نمایش سه‌بعدی ارائه نشده است.</p>"
     
     print(f"در حال ایجاد نمایش سه‌بعدی برای CID: {cid}...")
-    temp_sdf_file = f'temp_3d_structure_{cid}.sdf' # نام فایل موقت با CID
+    # استفاده از مسیر کامل یا نسبی که در محیط Hugging Face قابل نوشتن باشد
+    temp_sdf_file_dir = "/tmp" # یا هر مسیر دیگری که در Spaces قابل نوشتن باشد
+    if not os.path.exists(temp_sdf_file_dir):
+        try:
+            os.makedirs(temp_sdf_file_dir, exist_ok=True)
+        except OSError as e:
+            print(f"خطا در ایجاد دایرکتوری موقت {temp_sdf_file_dir}: {e}")
+            # اگر ایجاد دایرکتوری با مشکل مواجه شد، در دایرکتوری فعلی ذخیره کن
+            temp_sdf_file_dir = "."
+
+    temp_sdf_file = os.path.join(temp_sdf_file_dir, f'temp_3d_structure_{cid}.sdf')
     sdf_content = None
 
     try:
-        # دانلود فایل SDF سه‌بعدی
+        print(f"در حال دانلود ساختار سه‌بعدی (SDF) برای CID {cid} به {temp_sdf_file}...")
         pcp.download('SDF', temp_sdf_file, str(cid), 'cid', record_type='3d', overwrite=True)
 
-        # خواندن محتوای فایل SDF
         with open(temp_sdf_file, 'r') as f:
             sdf_content = f.read()
 
-        if not sdf_content or sdf_content.strip() == "$$$$\n": # بررسی خالی بودن فایل SDF
+        if not sdf_content or sdf_content.strip() == "$$$$\n" or sdf_content.strip() == "":
             print(f"فایل SDF دانلود شده برای CID {cid} خالی است یا ساختار سه‌بعدی ندارد.")
             return f"<p style='color:red;'>ساختار سه‌بعدی (SDF) برای CID {cid} در PubChem یافت نشد یا خالی است.</p>"
 
     except pcp.NotFoundError:
         print(f"ساختار سه‌بعدی (SDF) برای CID {cid} در PubChem یافت نشد.")
         return f"<p style='color:red;'>ساختار سه‌بعدی (SDF) برای CID {cid} در PubChem یافت نشد.</p>"
+    except FileNotFoundError:
+        print(f"فایل موقت SDF برای CID {cid} در مسیر {temp_sdf_file} پس از تلاش برای دانلود یافت نشد.")
+        return f"<p style='color:red;'>خطای داخلی: فایل ساختار سه‌بعدی ایجاد نشد.</p>"
     except Exception as e:
         error_msg = f"خطا در دانلود یا خواندن فایل SDF برای CID {cid}: {e}"
         print(error_msg)
         print(f"FULL TRACEBACK for SDF download/read: {traceback.format_exc()}")
         return f"<p style='color:red;'>{error_msg}</p>"
     finally:
-        # پاک کردن فایل موقت پس از استفاده
         if os.path.exists(temp_sdf_file):
             try:
                 os.remove(temp_sdf_file)
@@ -62,10 +73,9 @@ def generate_3d_html_from_cid(cid):
             print("در حال نمایش ساختار سه‌بعدی با py3Dmol...")
             viewer = py3Dmol.view(width=500, height=400)
             viewer.addModel(sdf_content, 'sdf')
-            viewer.setStyle({'stick': {}}) # سبک نمایش
+            viewer.setStyle({'stick': {}})
             viewer.setBackgroundColor('0xeeeeee')
             viewer.zoomTo()
-            # _make_html یک صفحه کامل HTML برمی‌گرداند، Gradio آن را در iframe قرار می‌دهد.
             html_output = viewer._make_html()
             return html_output
         except Exception as e_render:
@@ -74,11 +84,9 @@ def generate_3d_html_from_cid(cid):
             print(f"FULL TRACEBACK for py3Dmol render: {traceback.format_exc()}")
             return f"<p style='color:red;'>{error_msg}</p>"
     else:
-        # این حالت نباید رخ دهد اگر بررسی‌های قبلی انجام شده باشند
-        return f"<p style='color:red;'>محتوای SDF برای CID {cid} پس از دانلود در دسترس نبود (وضعیت غیرمنتظره).</p>"
+        return f"<p style='color:red;'>محتوای SDF برای CID {cid} پس از دانلود در دسترس نبود.</p>"
 
-# تابع اصلی پردازش آلکان (قبلاً find_and_display_isomers)
-# اکنون لیست CIDها و HTML اولیه برای نمایشگر سه‌بعدی را نیز برمی‌گرداند.
+# تابع اصلی پردازش آلکان
 def find_and_display_isomers_and_cids(molecule_name_input):
     if not molecule_name_input or not molecule_name_input.strip():
         return [], "لطفا نام یک مولکول را وارد کنید.", [], "<p style='color:orange;'>نام مولکول وارد نشده است.</p>"
@@ -100,10 +108,6 @@ def find_and_display_isomers_and_cids(molecule_name_input):
             return [], status_message, [], f"<p style='color:red;'>{status_message}</p>"
         
         print(f"Found {len(compounds)} potential matches for '{molecule_name}'. Checking them...")
-        # ... (بخش انتخاب main_compound_obj و molecular_formula مانند کد اصلی شما) ...
-        # این بخش از کد شما برای انتخاب ترکیب اصلی باید بدون تغییر باقی بماند
-        # فقط مطمئن شوید که main_compound_obj و molecular_formula به درستی مقداردهی می‌شوند.
-        # کپی کردن بخش مربوط به انتخاب main_compound_obj از کد اصلی شما:
         for i, c in enumerate(compounds):
             cid = c.cid
             common_name = c.synonyms[0] if c.synonyms else "N/A"
@@ -112,7 +116,7 @@ def find_and_display_isomers_and_cids(molecule_name_input):
             print(f"  Checking main compound candidate {i+1}: CID {cid}, Name: '{common_name}', Formula: '{actual_formula}'")
 
             if actual_formula:
-                is_standard_hydrocarbon = True 
+                is_standard_hydrocarbon = True
                 if c.canonical_smiles:
                     try:
                         mol_obj = Chem.MolFromSmiles(c.canonical_smiles)
@@ -125,31 +129,43 @@ def find_and_display_isomers_and_cids(molecule_name_input):
                                 for atom in mol_obj.GetAtoms():
                                     atom_symbols_main.add(atom.GetSymbol())
                                     if atom.GetIsotope() != 0:
+                                        print(f"    Main candidate CID {cid} has non-standard isotope: {atom.GetSymbol()}{atom.GetIsotope()}")
                                         is_standard_hydrocarbon = False; break
                                 if not atom_symbols_main.issubset({'C', 'H'}):
+                                    print(f"    Main candidate CID {cid} is not CH only: {atom_symbols_main}")
                                     is_standard_hydrocarbon = False
                             if is_standard_hydrocarbon:
                                 for bond in mol_obj.GetBonds():
                                     if bond.GetBondType() != Chem.BondType.SINGLE:
+                                        print(f"    Main candidate CID {cid} has non-single bond: {bond.GetBondType()}")
                                         is_standard_hydrocarbon = False; break
                                 if Chem.GetSymmSSSR(mol_obj):
+                                    print(f"    Main candidate CID {cid} has rings.")
                                     is_standard_hydrocarbon = False
-                        else: is_standard_hydrocarbon = False
-                    except Exception: is_standard_hydrocarbon = False 
-                else: is_standard_hydrocarbon = False 
+                        else:
+                            print(f"    Main candidate CID {cid} SMILES '{c.canonical_smiles}' could not be parsed by RDKit.")
+                            is_standard_hydrocarbon = False
+                    except Exception as rdkit_ex:
+                        print(f"    RDKit error processing SMILES for main candidate CID {cid}: {rdkit_ex}")
+                        is_standard_hydrocarbon = False
+                else:
+                    print(f"    Main candidate CID {cid} has no SMILES string for detailed check.")
+                    is_standard_hydrocarbon = False
 
                 if not is_standard_hydrocarbon: continue
 
                 current_compound_name_matches_input = molecule_name in [syn.lower() for syn in c.synonyms]
-                if current_compound_name_matches_input: 
+                if current_compound_name_matches_input:
                     main_compound_obj = c
                     molecular_formula = actual_formula
-                    break 
-                if not main_compound_obj: 
-                    main_compound_obj = c 
-                    molecular_formula = actual_formula 
+                    print(f"  SELECTED main compound: CID {main_compound_obj.cid}, Formula: {molecular_formula}")
+                    break
+                if not main_compound_obj:
+                    main_compound_obj = c
+                    molecular_formula = actual_formula
+                    print(f"  TENTATIVELY selected main compound: CID {main_compound_obj.cid}, Formula: {molecular_formula}")
         
-        if not main_compound_obj or not molecular_formula: 
+        if not main_compound_obj or not molecular_formula:
             status_message = f"آلکان استاندارد با نام '{molecule_name}' در PubChem یافت نشد یا با معیارهای آلکان (فقط C و H، پیوندهای یگانه، بدون حلقه، بدون ایزوتوپ غیر استاندارد، متصل) مطابقت ندارد."
             print(status_message)
             return [], status_message, [], f"<p style='color:red;'>{status_message}</p>"
@@ -165,37 +181,66 @@ def find_and_display_isomers_and_cids(molecule_name_input):
 
         print(f"Found {len(isomers_found_raw)} potential isomer entries from PubChem. Filtering for true structural alkane isomers...")
         
-        valid_structural_alkanes_entries = [] 
+        valid_structural_alkanes_entries = []
         unique_accepted_smiles = set()
 
-        # ... (بخش فیلتر کردن ایزومرها مانند کد اصلی شما) ...
-        # این بخش از کد شما برای فیلتر کردن ایزومرها باید بدون تغییر باقی بماند.
-        # کپی کردن بخش فیلتر کردن ایزومرها از کد اصلی شما:
         for isomer_entry in isomers_found_raw:
             smiles = isomer_entry.canonical_smiles
-            if not smiles: continue
+            if not smiles:
+                print(f"  Skipping isomer without SMILES: CID {isomer_entry.cid}")
+                continue
+
             try:
                 mol_iso = Chem.MolFromSmiles(smiles)
-                if not mol_iso: continue
+                if not mol_iso:
+                    print(f"  FILTERED (Invalid SMILES): CID {isomer_entry.cid}, SMILES: {smiles}")
+                    continue
+
                 is_valid_candidate = True
-                if len(Chem.GetMolFrags(mol_iso)) > 1: is_valid_candidate = False
+                
+                if len(Chem.GetMolFrags(mol_iso)) > 1:
+                    print(f"  FILTERED (Disconnected): CID {isomer_entry.cid}, NumFrags: {len(Chem.GetMolFrags(mol_iso))}, SMILES: {smiles}")
+                    is_valid_candidate = False
+                
                 if is_valid_candidate:
-                    atom_symbols = set(atom.GetSymbol() for atom in mol_iso.GetAtoms())
-                    if not atom_symbols.issubset({'C', 'H'}): is_valid_candidate = False
+                    atom_symbols = set()
+                    for atom in mol_iso.GetAtoms(): atom_symbols.add(atom.GetSymbol())
+                    if not atom_symbols.issubset({'C', 'H'}):
+                        print(f"  FILTERED (Non-CH): CID {isomer_entry.cid}, Elements: {atom_symbols}, SMILES: {smiles}")
+                        is_valid_candidate = False
+                
                 if is_valid_candidate:
                     for atom in mol_iso.GetAtoms():
-                        if atom.GetSymbol() == 'H' and atom.GetDegree() == 0: is_valid_candidate = False; break
-                        if atom.GetIsotope() != 0: is_valid_candidate = False; break 
+                        if atom.GetSymbol() == 'H' and atom.GetDegree() == 0:
+                            print(f"  FILTERED (Isolated H): CID {isomer_entry.cid}, Atom: {atom.GetSymbol()}{atom.GetIdx()+1}, SMILES: {smiles}")
+                            is_valid_candidate = False; break
+                        if atom.GetIsotope() != 0:
+                            print(f"  FILTERED (Isotope): CID {isomer_entry.cid}, Atom: {atom.GetSymbol()}{atom.GetIdx()+1}, Isotope: {atom.GetIsotope()}, SMILES: {smiles}")
+                            is_valid_candidate = False; break
+                
                 if is_valid_candidate:
                     for bond in mol_iso.GetBonds():
-                        if bond.GetBondType() != Chem.BondType.SINGLE: is_valid_candidate = False; break
-                    if Chem.GetSymmSSSR(mol_iso): is_valid_candidate = False
+                        if bond.GetBondType() != Chem.BondType.SINGLE:
+                            print(f"  FILTERED (Non-single bond): CID {isomer_entry.cid}, BondType: {bond.GetBondType()}, SMILES: {smiles}")
+                            is_valid_candidate = False; break
+                    if not is_valid_candidate: continue
+
+                    if Chem.GetSymmSSSR(mol_iso):
+                        print(f"  FILTERED (Has rings): CID {isomer_entry.cid}, SMILES: {smiles}")
+                        is_valid_candidate = False
+
                 if is_valid_candidate:
                     canonical_smiles_for_uniqueness = Chem.MolToSmiles(mol_iso, isomericSmiles=False)
                     if canonical_smiles_for_uniqueness not in unique_accepted_smiles:
+                        print(f"  ACCEPTED: CID {isomer_entry.cid}, Original SMILES: {smiles}, UniqueKeySMILES: {canonical_smiles_for_uniqueness}")
                         valid_structural_alkanes_entries.append(isomer_entry)
                         unique_accepted_smiles.add(canonical_smiles_for_uniqueness)
-            except Exception: continue
+                    else:
+                        print(f"  Skipping (Duplicate structure based on non-isomeric SMILES): CID {isomer_entry.cid}, SMILES: {smiles}")
+
+            except Exception as rdkit_iso_ex:
+                print(f"  RDKit or processing error for isomer SMILES CID {isomer_entry.cid}: {rdkit_iso_ex}, SMILES: {smiles}")
+                continue
         
         print(f"Found {len(valid_structural_alkanes_entries)} unique, valid structural alkane isomers after filtering.")
         
@@ -207,7 +252,6 @@ def find_and_display_isomers_and_cids(molecule_name_input):
             
             if not iupac_name and final_isomer_entry.synonyms:
                 chosen_synonym = final_isomer_entry.synonyms[0]
-                # (منطق انتخاب نام شما در اینجا)
                 simple_names = [s for s in final_isomer_entry.synonyms if s.lower().endswith("ane") and not any(char.isdigit() for char in s.split('-')[0]) and '-' not in s.split(' ')[0]]
                 if simple_names:
                     chosen_synonym = min(simple_names, key=len)
@@ -221,21 +265,18 @@ def find_and_display_isomers_and_cids(molecule_name_input):
 
             mol_image = draw_molecule(smiles_to_draw)
             if mol_image:
-                # اضافه کردن CID به کپشن برای اطلاعات بیشتر و استفاده در مرتب‌سازی اگر لازم باشد
                 caption = f"{iupac_name}\nSMILES: {smiles_to_draw}\nCID: {final_isomer_entry.cid}"
                 processed_isomers_for_gallery.append({
                     "image": mol_image,
                     "caption": caption,
                     "cid": final_isomer_entry.cid,
-                    "sort_key": iupac_name.lower() # برای مرتب‌سازی بر اساس نام
+                    "sort_key": iupac_name.lower()
                 })
             else:
                 print(f"  Failed to draw image for accepted isomer: CID {final_isomer_entry.cid}, SMILES: {smiles_to_draw}")
 
-        # مرتب‌سازی ایزومرها بر اساس نام (یا کلید مرتب‌سازی دیگر)
         processed_isomers_for_gallery.sort(key=lambda x: x["sort_key"])
 
-        # آماده‌سازی خروجی‌ها برای Gradio
         isomer_outputs_final = [(item["image"], item["caption"]) for item in processed_isomers_for_gallery]
         final_cids_ordered = [item["cid"] for item in processed_isomers_for_gallery]
         
@@ -252,9 +293,6 @@ def find_and_display_isomers_and_cids(molecule_name_input):
         else:
             status_message = f"{len(isomer_outputs_final)} ایزومر ساختاری آلکان برای '{molecule_name_input}' (فرمول: {molecular_formula}) پیدا و نمایش داده شد."
             initial_3d_view_html = "<p>یک ایزومر را از گالری بالا برای نمایش سه‌بعدی انتخاب کنید.</p>"
-            # اختیاری: نمایش خودکار اولین ایزومر در حالت سه‌بعدی
-            # if final_cids_ordered:
-            #     initial_3d_view_html = generate_3d_html_from_cid(final_cids_ordered[0])
         
         return isomer_outputs_final, status_message, final_cids_ordered, initial_3d_view_html
 
@@ -270,7 +308,7 @@ def find_and_display_isomers_and_cids(molecule_name_input):
 
 # تابع کنترل‌کننده برای انتخاب آیتم از گالری
 def handle_gallery_selection(current_cids_in_gallery_state, evt: gr.SelectData):
-    if evt is None or evt.index is None : # اگر چیزی انتخاب نشده باشد یا رویداد نامعتبر باشد
+    if evt is None or evt.index is None:
         return "<p>برای نمایش سه‌بعدی، یک ایزومر را از گالری انتخاب کنید.</p>"
     
     selected_index = evt.index
@@ -296,57 +334,55 @@ with gr.Blocks(theme=gr.themes.Soft()) as iface:
             label="نام آلکان را وارد کنید",
             placeholder="مثال: butane, pentane, hexane",
             info="نام آلکان مورد نظر خود را به انگلیسی و با حروف کوچک وارد کنید.",
-            scale=3 # تخصیص فضای بیشتر به تکست‌باکس
+            scale=3
         )
         submit_button = gr.Button("جستجوی ایزومرها", variant="primary", scale=1)
 
-    status_output = gr.Textbox(label="وضعیت و پیام‌ها", lines=2)
+    status_output = gr.Textbox(label="وضعیت و پیام‌ها", lines=2, interactive=False) # interactive=False for display only
     
-    # State برای نگهداری CID های ایزومرهای نمایش داده شده در گالری
-    # این State با هر جستجوی جدید به‌روز می‌شود.
     isomer_cids_state = gr.State([])
 
     with gr.Row():
         gallery_output = gr.Gallery(
             label="ایزومرهای یافت شده (2D)",
             columns=[3],
-            height="auto",
+            height="auto", # یا یک مقدار ثابت مانند 600
             object_fit="contain",
-            # elem_id="isomer_gallery" # اگر نیاز به ارجاع با JS باشد
-            scale=1 # تنظیم مقیاس برای تقسیم فضا
+            # elem_id="isomer_gallery" # در صورت نیاز
+            # scale=1 # اگر می‌خواهید به صراحت تقسیم فضا کنید
         )
+        # آرگومان scale از gr.HTML حذف شده است
         html_3d_output = gr.HTML(
-            label="نمایش سه‌بعدی ایزومر (py3Dmol)",
-            scale=1 # تنظیم مقیاس برای تقسیم فضا
+            label="نمایش سه‌بعدی ایزومر (py3Dmol)"
+            # scale=1 # اگر می‌خواهید به صراحت تقسیم فضا کنید و نسخه Gradio پشتیبانی می‌کند
         )
     
     gr.Examples(
         examples=[["butane"], ["pentane"], ["hexane"], ["heptane"]],
         inputs=molecule_name_input,
-        # outputs=[gallery_output, status_output, isomer_cids_state, html_3d_output], # برای Examples، تابع باید بتواند همه خروجی‌ها را تولید کند
-        # fn=find_and_display_isomers_and_cids # تابع examples باید بتواند همه خروجی‌ها را برگرداند
+        # برای اینکه Examples درست کار کنند، تابع fn باید دقیقا همان خروجی‌هایی را برگرداند که در outputs لیست شده‌اند.
+        # outputs=[gallery_output, status_output, isomer_cids_state, html_3d_output],
+        # fn=find_and_display_isomers_and_cids # این باید در صورتی که outputs بالا را برمی‌گرداند، کار کند
     )
     
-    # اتصال رویداد کلیک دکمه یا submit تکست‌باکس به تابع اصلی
-    # تابع اصلی باید تمام خروجی‌های متصل را برگرداند
     submit_button.click(
         fn=find_and_display_isomers_and_cids,
         inputs=molecule_name_input,
         outputs=[gallery_output, status_output, isomer_cids_state, html_3d_output]
     )
-    molecule_name_input.submit( # همچنین با زدن Enter در تکست‌باکس
+    molecule_name_input.submit(
         fn=find_and_display_isomers_and_cids,
         inputs=molecule_name_input,
         outputs=[gallery_output, status_output, isomer_cids_state, html_3d_output]
     )
 
-    # اتصال رویداد select گالری به تابع کنترل‌کننده برای نمایش سه‌بعدی
-    # evt (gr.SelectData) به صورت خودکار به عنوان آخرین آرگومان به تابع پاس داده می‌شود.
     gallery_output.select(
         fn=handle_gallery_selection,
-        inputs=[isomer_cids_state], # ورودی صریح از state
+        inputs=[isomer_cids_state],
         outputs=html_3d_output
     )
 
 if __name__ == '__main__':
+    # برای تست محلی، می‌توانید debug=True را فعال کنید
+    # iface.launch(debug=True)
     iface.launch()
